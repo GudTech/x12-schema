@@ -7,8 +7,8 @@ has delim_re => (is => 'ro', isa => 'RegexpRef', init_arg => undef);
 
 has [qw( segment_term element_sep repeat_sep component_sep )] => (is => 'ro', isa => 'Str', required => 1);
 
-has output => (is => 'ro', isa => 'Str', default => '', init_arg => undef);
-has output_func => (is => 'ro', isa => 'CodeRef');
+has output => (is => 'rw', isa => 'Str', default => '', init_arg => undef);
+has output_func => (is => 'rw', isa => 'CodeRef');
 
 # DIVERSITY: this will need to include flags to control the output in other ways, such as UN/EDIFACT mode, whether to use exponential notation, etc
 

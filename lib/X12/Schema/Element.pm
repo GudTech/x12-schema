@@ -1,5 +1,7 @@
 package X12::Schema::Element;
 
+use DateTime;
+
 use Moose;
 use namespace::autoclean;
 
@@ -28,7 +30,7 @@ sub BUILD {
     $self->{type} = $1;
     $self->{scale} = $2 || 0;
     $self->{min_length} = $3;
-    $self->{min_length} = $4;
+    $self->{max_length} = $4;
 
     $self->{contract} = $self->expand && { reverse %{ $self->expand } };
 }
@@ -82,7 +84,7 @@ sub encode {
     }
 
     if ($type eq 'ID') {
-        $value = ($self->contract->{$value} || die "Value $value is for ".$self->name." is not contained in: ".join(', ',sort keys %{$self->contract})."\n");
+        $value = ($self->contract->{$value} || die "Value $value not contained in ".join(', ',sort keys %{$self->contract})." for ".$self->name."\n");
         $type = "AN";
 
         # deliberate fall through
@@ -93,7 +95,7 @@ sub encode {
         $string =~ s/ *$//;
 
         length($string) > $maxp and die "Value $value does not fit in $maxp characters for ".$self->name."\n";
-        length($string) < $minp and $string .= (" " x ($maxp - length($string)));
+        length($string) < $minp and $string .= (" " x ($minp - length($string)));
     }
 
     # on input, dates and times are not meaningfully associated (with each other, or with a time zone) so we have to generate isolated dates
