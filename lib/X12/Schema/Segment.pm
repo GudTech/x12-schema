@@ -36,11 +36,13 @@ sub encode {
     die "Excess fields for segment ".$self->name.": ".join(', ', sort keys %tmp) if %tmp;
     pop @bits while @bits && $bits[-1] eq '';
 
-    $sink->segment( join($sink->{element_sep}, $self->tag, @bits) . $sink->{segment_sep} ) if @bits;
+    $sink->segment( join($sink->element_sep, $self->tag, @bits) . $sink->segment_term ) if @bits;
 }
 
 sub BUILD {
     my ($self) = @_;
+
+    # DIVERSITY: possibly worth restricting use of 'B' type here?
 
     # This needs a little elaboration.  Yes, we sometimes do not output a value.
     # But this flag only controls reading, and on read, entirely empty segments

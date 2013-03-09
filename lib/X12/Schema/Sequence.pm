@@ -8,6 +8,9 @@ with 'X12::Schema::Sequencable';
 
 has children => (isa => 'ArrayRef[X12::Schema::Sequencable]', is => 'ro', required => 1);
 
+# DIVERSITY: These loop rules are much looser than prescribed by X12.6
+# DIVERSITY: may need to handle UN/EDIFACT's explicit nesting indicators
+
 sub encode {
     my ($self, $sink, $obj) = @_;
 
