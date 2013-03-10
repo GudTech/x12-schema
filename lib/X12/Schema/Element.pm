@@ -58,7 +58,7 @@ sub encode {
         }
 
         if ($prec < 0) {
-            die "Value $value canot fit in $maxp digits for ".$self->name."\n";
+            die "Value $value cannot fit in $maxp digits for ".$self->name."\n";
         }
 
         my $wid = 0;
@@ -75,12 +75,12 @@ sub encode {
         my $wid = 0;
 
         while (1) {
-            $string = sprintf "%0*d", $wid, $value;
+            $string = sprintf "%0*.0f", $wid, $munge;
             ($string =~ tr/0-9//) >= $minp and last;
             $wid++;
         }
 
-        ($string =~ tr/0-9//) >= $maxp and die "Value $value cannot fit in $maxp digits for ".$self->name."\n";
+        ($string =~ tr/0-9//) > $maxp and die "Value $value cannot fit in $maxp digits for ".$self->name."\n";
     }
 
     if ($type eq 'ID') {

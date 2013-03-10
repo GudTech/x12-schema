@@ -15,7 +15,7 @@ throws_ok { X12::Schema::Element->new(type => 'N 3/3') } qr/name.*required/;
 
 throws_ok { X12::Schema::Element->new(name => 'Foo', type => 'X 2/3') } qr/type at BUILD must look like/;
 throws_ok { X12::Schema::Element->new(name => 'Foo', type => 'ID 2/3') } qr/expand required/;
-throws_ok { X12::Schema::Element->new(name => 'Foo', type => 'R3 2/3') } qr/numeric postfix/;
+throws_ok { X12::Schema::Element->new(name => 'Foo', type => 'R3 2/3') } qr/Numeric postfix/;
 
 sub elem_test {
     my $type = shift;
@@ -69,8 +69,8 @@ elem_test('N0 3/5',
     encode => -995, '-995',
     encode => 99995, '99995',
     encode => -99995, '-99995',
-    encode => 99999.9, qr/Value 99999.9 cannot fit in 3 digits for/,
-    encode => -99999.9, qr/Value -99999.9 cannot fit in 3 digits for/,
+    encode => 99999.9, qr/Value 99999.9 cannot fit in 5 digits for/,
+    encode => -99999.9, qr/Value -99999.9 cannot fit in 5 digits for/,
 );
 
 elem_test('N2 4/6',
