@@ -1,13 +1,13 @@
 use strict;
 use warnings;
-use Test::More tests => 27;
+use Test::More tests => 26;
 use Test::Exception;
 
 BEGIN { use_ok "X12::Schema::TokenSink"; }
 
 my %args = qw( segment_term s element_sep e repeat_sep r component_sep c );
 
-for my $t (sort keys %args) {
+for my $t (qw( segment_term element_sep component_sep )) {
     local $args{$t}; delete $args{$t};  # delete local is a 5.12ism
     throws_ok { X12::Schema::TokenSink->new( %args ) } qr/$t.*required/, "$t is required";
 }

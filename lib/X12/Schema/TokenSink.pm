@@ -5,7 +5,8 @@ use namespace::autoclean;
 
 has delim_re => (is => 'ro', isa => 'RegexpRef', init_arg => undef);
 
-has [qw( segment_term element_sep repeat_sep component_sep )] => (is => 'ro', isa => 'Str', required => 1);
+has [qw( segment_term element_sep component_sep )] => (is => 'ro', isa => 'Str', required => 1);
+has repeat_sep => (is => 'ro', isa => 'Str');
 
 has output => (is => 'rw', isa => 'Str', default => '', init_arg => undef);
 has output_func => (is => 'rw', isa => 'CodeRef');
@@ -17,14 +18,15 @@ sub BUILD {
 
     my %all_seps;
     $self->segment_term =~ /^.\r?\n?$/ or confess "segment_term must be a single character, optionally followed by CR and/or LF";
-    $all_seps{substr($self->segment_term,0,1)} = 1;
+    $all_seps{substr($self->segment_term,0,1)}++;
 
     for (qw( element_sep repeat_sep component_sep )) {
+        $self->$_ or next;
         length($self->$_) == 1 or confess "$_ must be a single character";
-        $all_seps{$self->$_} = 1;
+        $all_seps{$self->$_}++;
     }
 
-    keys(%all_seps) == 4 or confess "all delimiters must be unique";
+    grep(($_ > 1), values %all_seps) and confess "all delimiters must be unique";
     my $re = '[' . quotemeta(join '', sort keys %all_seps) . ']';
     $self->{delim_re} = qr/$re/;
 }
