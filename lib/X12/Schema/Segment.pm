@@ -6,15 +6,16 @@ use namespace::autoclean;
 with 'X12::Schema::Sequencable';
 
 has tag          => (isa => 'Str', is => 'ro', required => 1);
-has syntax_notes => (isa => 'ArrayRef[X12::Schema::SyntaxNote]', is => 'ro', default => sub { [] });
+has constraints  => (isa => 'ArrayRef[X12::Schema::Constraint]', is => 'ro', default => sub { [] });
 has elements     => (isa => 'ArrayRef[X12::Schema::Element]', is => 'ro', required => 1);
+has incomplete   => (isa => 'Bool', is => 'ro', default => 0);
 
 sub encode {
     my ($self, $sink, $obj) = @_;
 
     die 'Segment '.$self->name." must be encoded using a HASH\n" unless $obj && ref($obj) eq 'HASH' && !blessed($obj);
 
-    $_->check($obj) for @{ $self->syntax_notes };
+    $_->check($obj) for @{ $self->constraints };
 
     my %tmp = %$obj;
     my @bits;

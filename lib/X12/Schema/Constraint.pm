@@ -1,4 +1,4 @@
-package X12::Schema::SyntaxNote;
+package X12::Schema::Constraint;
 
 use Moose;
 use namespace::autoclean;
