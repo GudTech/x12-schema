@@ -25,7 +25,7 @@ sub BUILD {
     $self->{type} =~ /^(N|AN|DT|TM|ID|R|B)(\d*) (\d+)\/(\d+)$/ or confess "type at BUILD must look like N5 10/20";
 
     confess "Numeric postfix used only with N" if $1 ne 'N' && $2; # N means N0
-    confess "expand required iff type = ID" if ($1 eq 'ID') != (defined $self->expand);
+    confess "expand used only with type = ID" if ($1 ne 'ID') && (defined $self->expand);
 
     $self->{type} = $1;
     $self->{scale} = $2 || 0;
@@ -84,7 +84,9 @@ sub encode {
     }
 
     if ($type eq 'ID') {
-        $value = ($self->contract->{$value} || die "Value $value not contained in ".join(', ',sort keys %{$self->contract})." for ".$self->name."\n");
+        if ($self->contract) {
+            $value = ($self->contract->{$value} || die "Value $value not contained in ".join(', ',sort keys %{$self->contract})." for ".$self->name."\n");
+        }
         $type = "AN";
 
         # deliberate fall through

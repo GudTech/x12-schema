@@ -2,7 +2,7 @@ use strict;
 use warnings;
 
 use File::Slurp qw( read_file );
-use Test::More tests => 40;
+use Test::More tests => 45;
 use Try::Tiny;
 
 BEGIN { use_ok('X12::Schema::Parser') or die; }
@@ -18,7 +18,9 @@ for my $ex (@examples) {
 
     my $result;
 
+    local $@;
     my $expect = ($output =~ /^(_F.*)/) ? [ FAIL => $1 ] : [ OK => eval $output ];
+    die $@ if $@;
 
     try {
         $result = [ 'OK', X12::Schema::Parser->parse( '_F', $input ) ];
@@ -26,6 +28,7 @@ for my $ex (@examples) {
         chomp; $result = [ 'FAIL', $_ ];
     };
 
+    use Data::Dumper;
     is_deeply( $result, $expect, $name );
 }
 
@@ -310,3 +313,117 @@ schema: foo
     loop: BOB
 ==>
 _F:2:Loop header must be of the form loop: HashKey [01]/ddd or HashKey [01]/N
+
+#### Now let's test some VALID syntax
+
+--- minimal valid
+schema: foo
+    FOO Foo1 1/1
+segment: FOO Foo2
+    A AN 1/1
+==>
+my $FOO = X12::Schema::Segment->new( tag => 'FOO', friendly => 'Foo2', elements => [
+    X12::Schema::Element->new( name => 'A', type => 'AN 1/1' )
+] );
+X12::Schema->new(root => X12::Schema::Sequence->new( required => 1, max_use => 1, name => 'ROOT', children => [
+    X12::Schema::SegmentUse->new( def => $FOO, name => 'Foo1', required => 1, max_use => 1 )
+] ) );
+
+# this may break if we start verifying that constraints are logically compatible...
+--- constraints: all features
+schema: foo
+    FOO Foo1 1/1
+segment: FOO Foo2
+    A AN 1/1
+    B AN 1/1
+    C AN 1/1
+
+    constraint: all_or_none(B, A)
+    constraint:   at_most_one  (  A ,B)
+    constraint: at_least_one  ( A,B  )  
+    constraint: if_then_one(A,B)
+    constraint: if_then_all(A,B,C)
+==>
+my $FOO = X12::Schema::Segment->new( tag => 'FOO', friendly => 'Foo2', elements => [
+    X12::Schema::Element->new( name => 'A', type => 'AN 1/1' ),
+    X12::Schema::Element->new( name => 'B', type => 'AN 1/1' ),
+    X12::Schema::Element->new( name => 'C', type => 'AN 1/1' ),
+], constraints => [
+    X12::Schema::Constraint->new( all_or_none => [ 'B', 'A' ] ),
+    X12::Schema::Constraint->new( at_most_one => [ 'A', 'B' ] ),
+    X12::Schema::Constraint->new( at_least_one => [ 'A', 'B' ] ),
+    X12::Schema::Constraint->new( if_present => 'A', require_one => [ 'B' ] ),
+    X12::Schema::Constraint->new( if_present => 'A', require_all => [ 'B', 'C' ] ),
+]);
+X12::Schema->new(root => X12::Schema::Sequence->new( required => 1, max_use => 1, name => 'ROOT', children => [
+    X12::Schema::SegmentUse->new( def => $FOO, name => 'Foo1', required => 1, max_use => 1 )
+] ) );
+
+--- elements: all features
+schema: foo
+    FOO Foo1 1/1
+segment: FOO Foo2
+    A AN 1/1
+    B AN 1/10 +required
+    C ID 2/2
+        US -> UnitedStates
+        CA -> Canada
+    D ID 2/2 +raw
+==>
+my $FOO = X12::Schema::Segment->new( tag => 'FOO', friendly => 'Foo2', elements => [
+    X12::Schema::Element->new( name => 'A', type => 'AN 1/1' ),
+    X12::Schema::Element->new( name => 'B', type => 'AN 1/10', required => 1 ),
+    X12::Schema::Element->new( name => 'C', type => 'ID 2/2', expand => { US => 'UnitedStates', CA => 'Canada' } ),
+    X12::Schema::Element->new( name => 'D', type => 'ID 2/2' ),
+] );
+X12::Schema->new(root => X12::Schema::Sequence->new( required => 1, max_use => 1, name => 'ROOT', children => [
+    X12::Schema::SegmentUse->new( def => $FOO, name => 'Foo1', required => 1, max_use => 1 )
+] ) );
+
+--- segments: all features
+schema: foo
+    FO1 Foo1 1/1
+    FO2 Foo2 1/N
+    FO3 Foo3 0/1
+segment: FO1 Foo
+    A AN 1/1
+segment: FO2 Foo
+    A AN 1/1
+segment: FO3 Foo +incomplete
+    A AN 1/1
+==>
+my %S; $S{$_} = X12::Schema::Segment->new( tag => $_, friendly => 'Foo', incomplete => ($_ eq 'FO3' ? 1 : 0), elements => [
+    X12::Schema::Element->new( name => 'A', type => 'AN 1/1' )
+] ) for qw( FO1 FO2 FO3 );
+X12::Schema->new(root => X12::Schema::Sequence->new( required => 1, max_use => 1, name => 'ROOT', children => [
+    X12::Schema::SegmentUse->new( def => $S{FO1}, name => 'Foo1', required => 1, max_use => 1 ),
+    X12::Schema::SegmentUse->new( def => $S{FO2}, name => 'Foo2', required => 1, max_use => undef ),
+    X12::Schema::SegmentUse->new( def => $S{FO3}, name => 'Foo3', required => 0, max_use => 1 )
+] ) );
+
+--- again, with loops
+segment: FO1 Foo
+    A AN 1/1
+schema: foo
+    loop: L1 1/1
+        FO1 Foo1 1/1
+    loop: L2 1/N
+        FO2 Foo2 1/1
+    loop: L3 0/1
+        FO3 Foo3 1/1
+segment: FO2 Foo
+    A AN 1/1
+segment: FO3 Foo
+    A AN 1/1
+==>
+my %S; $S{$_} = X12::Schema::Segment->new( tag => $_, friendly => 'Foo', elements => [
+    X12::Schema::Element->new( name => 'A', type => 'AN 1/1' )
+] ) for qw( FO1 FO2 FO3 );
+X12::Schema->new(root => X12::Schema::Sequence->new( required => 1, max_use => 1, name => 'ROOT', children => [
+    X12::Schema::Sequence->new( required => 1, max_use => 1, name => 'L1', children => [
+        X12::Schema::SegmentUse->new( def => $S{FO1}, name => 'Foo1', required => 1, max_use => 1 ) ]),
+    X12::Schema::Sequence->new( required => 1, max_use => undef, name => 'L2', children => [
+        X12::Schema::SegmentUse->new( def => $S{FO2}, name => 'Foo2', required => 1, max_use => 1 ) ]),
+    X12::Schema::Sequence->new( required => '', max_use => 1, name => 'L3', children => [
+        X12::Schema::SegmentUse->new( def => $S{FO3}, name => 'Foo3', required => 1, max_use => 1 ) ]),
+] ) );
