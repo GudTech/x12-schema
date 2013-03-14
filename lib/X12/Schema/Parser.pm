@@ -4,20 +4,34 @@ use strict;
 use warnings;
 # not an instantiatable class
 
+use X12::Schema::Element;
+use X12::Schema::Constraint;
+use X12::Schema::Segment;
+use X12::Schema::SegmentUse;
+use X12::Schema::Sequence;
+use X12::Schema;
+
+sub parse {
+    my ($self, $filename, $text) = @_;
+
+    my $root = $self->_extract_tree($filename, $text);
+    return X12::Schema->new(root => $self->_interpret_root($root));
+}
+
 sub _extract_tree {
-    my ($self, $file, $lines) = @_;
+    my ($self, $file, $text) = @_;
 
     # contains all items for which there is no less-or-equal-indented item further down
-    my @open_items = ( { indent => -1, children => [] } );
+    my @open_items = ( { file => $file, line => 0, indent => -1, children => [] } );
 
     my $lineno = 0;
-    for my $line (@$lines) {
+    for my $line (split /\n/, $text) {
         $lineno++;
 
-        my ($indent, $body) = $line =~ /^([ \t]**)([^#]**)/;
+        my ($indent, $body) = $line =~ /^([ \t]*+)([^#]*+)/;
         $body =~ s/\s*$//;
 
-        die "$file:$lineno: Illegal hard tab\n" if $indent =~ /\t/;
+        die "$file:$lineno:Illegal hard tab\n" if $indent =~ /\t/;
 
         next unless $body;
         my $num_indent = length($indent);
@@ -28,7 +42,7 @@ sub _extract_tree {
 
         # attach to nearest plausible ancestor, but enforce consistency
 
-        my $sibling_indent = $open_items[-1]{children} ? $open_items[-1]{children}[-1]{indent} : undef;
+        my $sibling_indent = $open_items[-1]{children}[-1] ? $open_items[-1]{children}[-1]{indent} : undef;
 
         if (defined($sibling_indent) && $sibling_indent != $num_indent) {
             die "$file:$lineno:Inconsistent indentation; previous sibling indented $sibling_indent, this indented $num_indent\n";
@@ -39,15 +53,22 @@ sub _extract_tree {
         my @flags;
         unshift @flags, pop @toks while @toks && $toks[-1] =~ /^\+/;
 
-        push @{ $open_items[-1]{children} }, { file => $file, line => $lineno, toks => \@toks, command => $command, flags => \@flags, indent => $num_indent, children => [] };
+        my $new = { file => $file, line => $lineno, toks => \@toks, command => $command, flags => \@flags, indent => $num_indent, children => [] };
+        push @{ $open_items[-1]{children} }, $new;
+        push @open_items, $new;
     }
 
-    return $open_items[0]{children};
+    return $open_items[0];
+}
+
+sub _error {
+    my $node = shift;
+    die join "", $node->{file}, ":", $node->{line}, ":", @_, "\n";
 }
 
 sub _noflags {
     my ($node,$thing) = @_;
-    die "$node->{file}:$node->{line}:$thing does not accept flags\n" if @{ $node->{flags} };
+    _error($node, ucfirst($thing)," does not accept flags") if @{ $node->{flags} };
 }
 
 sub _getflags {
@@ -55,16 +76,18 @@ sub _getflags {
 
     my %fpassed;
     for my $fstr (@{ $node->{flags} }) {
-        if ($fpassed{$fstr}++) { die "$node->{file}:$node->{line}:Duplicate flag $fstr\n" }
+        if ($fpassed{$fstr}++) { _error($node, "Duplicate flag $fstr") }
     }
 
     my @out;
+    my @fok;
     while (@flags) {
         my $fname = shift @flags;
+        push @fok, $fname;
         push @out, delete($fpassed{$fname}) ? 1 : 0;
     }
 
-    die "$node->{file}:$node->{line}:Invalid flag ".((sort keys %fpassed)[0])." for $thing, valid flags are: @flags\n" if %fpassed;
+    _error($node,"Invalid flag ",((sort keys %fpassed)[0])," for $thing, valid flags are: @fok") if %fpassed;
 
     return @out;
 }
@@ -77,20 +100,20 @@ sub _interpret_root {
 
     for my $z (@{ $node->{children} }) {
         if ($z->{command} eq 'schema:') {
-            die "$z->{file}:$z->{line}:Duplicate schema definition\n" if $schema;
+            _error($z, "Duplicate schema definition") if $schema;
             $schema = $z; # need to defer this until the segments exist
         }
         elsif ($z->{command} eq 'segment:') {
             my $seg = $self->_interpret_segment($z);
-            die "$z->{file}:$z->{line}:Duplicate definition of segment ".$seg->tag."\n" if $segments{$seg->tag};
+            _error($z,"Duplicate definition of segment ",$seg->tag) if $segments{$seg->tag};
             $segments{$seg->tag} = $seg;
         }
         else {
-            die "$z->{file}:$z->{line}:Root-level element in schema must be segment: or schema:\n";
+            _error($z, "Root-level element in schema must be segment: or schema:");
         }
     }
 
-    die "$node->{file}:0:Missing schema: element\n" unless $schema;
+    _error($node, "Missing schema: element") unless $schema;
 
     return $self->_interpret_schema(\%segments, $schema);
 }
@@ -98,27 +121,30 @@ sub _interpret_root {
 sub _interpret_segment {
     my ($self, $node) = @_;
 
-    my ($incomplete) = _getflags("node", "segment", "+incomplete");
-    die "$node->{file}:$node->{line}:Segment syntax is segment: SHRT FriendlyName\n" unless @{ $node->{toks} } == 2;
+    my ($incomplete) = _getflags($node, "segment", "+incomplete");
+    _error($node, "Segment syntax is segment: SHRT FriendlyName") unless @{ $node->{toks} } == 2;
 
     my ($short, $friendly) = @{ $node->{toks} };
 
     my @elements;
     my @constraints;
+    my %elem_ok;
 
     for my $z (@{ $node->{children} }) {
         if ($z->{command} eq '') {
             push @elements, $self->_interpret_element($z);
+            $elem_ok{ $elements[-1]->name }++ and _error($z, "Duplicate hash key for segment element: ", $elements[-1]->name);
         }
         elsif ($z->{command} eq 'constraint:') {
             push @constraints, $z; # delay so that we can check element names
         }
         else {
-            die "$z->{file}:$z->{line}:Child of a segment must be an element (unmarked) or a constraint:\n";
+            _error($z, "Child of a segment must be an element (unmarked) or a constraint:");
         }
     }
 
-    my %elem_ok = map { $_->name => 1 } @elements;
+    @elements or _error($node, "Non-incomplete segment without defined elements");
+
     @constraints = map { $self->_interpret_constraint(\%elem_ok, $_) } @constraints;
 
     return X12::Schema::Segment->new(
@@ -126,28 +152,28 @@ sub _interpret_segment {
         constraints => \@constraints,
         elements    => \@elements,
         tag         => $short,
-        name        => $friendly,
+        friendly    => $friendly,
     );
 }
 
 sub _interpret_constraint {
     my ($self, $elem_ok, $node) = @_;
 
-    _noflags($node);
+    _noflags($node,"constraint");
     my $reparse = join " ", @{ $node->{toks} };
 
     my ($kind,$allelems) = $reparse =~ /^\s*(\w+)\s*\((\s*\w+\s*(?:,\s*\w+\s*)*)\)\s*$/
-        or die "$node->{file}:$node->{line}:Constraint syntax is constraint: kind( A, B, C )\n";
+        or _error($node, "Constraint syntax is constraint: kind( A, B, C )");
 
     my @elems = split /,/, $allelems;
     map { s/^\s+|\s+$//g } @elems;
 
-    @elems >= 2 or die "$node->{file}:$node->{line}:Constraint requires at least two elements\n";
+    @elems >= 2 or _error($node, "Constraint requires at least two elements");
 
     my %uniq;
     for my $e (@elems) {
-        die "$node->{file}:$node->{line}:No such element $e\n" unless $elem_ok->{$e};
-        die "$node->{file}:$node->{line}:Duplicate element $e\n" if $uniq{$e}++;
+        _error($node, "No such element $e") unless $elem_ok->{$e};
+        _error($node, "Duplicate element $e") if $uniq{$e}++;
     }
 
     if ($kind eq 'all_or_none') {
@@ -161,7 +187,7 @@ sub _interpret_constraint {
     } elsif ($kind eq 'if_then_one') {
         return X12::Schema::Constraint->new( if_present => shift(@elems), require_one => \@elems );
     } else {
-        die "$node->{file}:$node->{line}:Invalid constraint type $kind, must be one of (all_or_none, at_most_one, at_least_one, if_then_all, if_then_one)\n";
+        _error($node, "Invalid constraint type $kind, must be one of (all_or_none, at_most_one, at_least_one, if_then_all, if_then_one)");
     }
 }
 
@@ -170,21 +196,21 @@ sub _interpret_element {
 
     my ($required, $raw) = _getflags($node, 'element', '+required', '+raw');
 
-    @{ $node->{toks} } == 3 or die "$node->{file}:$node->{line}:Element definition must be of the form FriendlyName TYPE MIN/MAX [+flags]\n";
+    @{ $node->{toks} } == 3 or _error($node, "Element definition must be of the form FriendlyName TYPE MIN/MAX [+flags]");
     my ($name, $type, $size) = @{ $node->{toks} };
 
     my (%expand, %unexpand);
 
-    die "$node->{file}:$node->{line}:+raw only permitted for ID\n" if $raw && $type ne 'ID';
+    _error($node, "+raw only permitted for ID") if $raw && $type ne 'ID';
 
     for my $z (@{ $node->{children} }) {
-        die "$node->{file}:$node->{line}:Value definitions only permitted for ID-type elements without +raw\n" unless $type eq 'ID' && !$raw;
+        _error($z, "Value definitions only permitted for ID-type elements without +raw") unless $type eq 'ID' && !$raw;
         _noflags($z, "value");
         my ($short, undef, $long) = @{ $z->{toks} };
-        die "$node->{file}:$node->{line}:Value definition must be of the form SHORT -> LONG\n" unless $z->{command} eq '' && @{ $z->{toks} } == 3 && $z->{toks}[1] eq '->';
-        die "$node->{file}:$node->{line}:Short value can contain only [0-9A-Z] chars\n" if $short =~ /[^0-9A-Z]/;
-        die "$node->{file}:$node->{line}:Duplicate short value $short\n" if $expand{$short};
-        die "$node->{file}:$node->{line}:Duplicate long value $short\n" if $unexpand{$long};
+        _error($z, "Value definition must be of the form SHORT -> LONG") unless $z->{command} eq '' && @{ $z->{toks} } == 3 && $z->{toks}[1] eq '->';
+        _error($z, "Short value can contain only [0-9A-Z] chars") if $short =~ /[^0-9A-Z]/;
+        _error($z, "Duplicate short value $short") if $expand{$short};
+        _error($z, "Duplicate long value $long") if $unexpand{$long};
         $expand{$short} = $long;
         $unexpand{$long} = $short;
     }
@@ -200,20 +226,39 @@ sub _interpret_element {
 sub _interpret_schema {
     my ($self, $elems, $node) = @_;
     _noflags($node,"schema");
-    return $self->_interpret_loop_body(1, 1, $elems, $node);
+    return $self->_interpret_loop_body('ROOT', 1, 1, $elems, $node);
 }
 
 sub _interpret_loop_body {
-    my ($self, $min, $max, $elems, $node) = @_;
+    my ($self, $name, $min, $max, $elems, $node) = @_;
 
     my @children;
 
     for my $z (@{ $node->{children} }) {
         if ($z->{command} eq 'loop:') {
             _noflags($z,"loop");
-            (@{ $z->{toks} } == 1 && $z->{toks}[0] =~ /^(0|1):(N|\d+)$/) or die "$z->{file}:$z->{line}:Loop header must be of the form loop: [01]/ddd or [01]/N\n";
-            push @children, $self->_interpret_loop_body($1, $2, $elems, $z);
+            (@{ $z->{toks} } == 2 && $z->{toks}[1] =~ /^(0|1)\/(N|\d+)$/) or _error($z, "Loop header must be of the form loop: HashKey [01]/ddd or HashKey [01]/N");
+            push @children, $self->_interpret_loop_body($z->{toks}[0], $1, $2, $elems, $z);
         }
         elsif ($z->{command} eq '') {
             _noflags($z,"segment ref");
-            # what do we do with the name here
+            @{ $z->{toks} } == 3 && $z->{toks}[2] =~ /^(0|1)\/(N|\d+)$/ or _error($z, "Segment ref must be of the form CODE HashKey MIN/MAX");
+            my ($code, $name) = @{ $z->{toks} };
+            $elems->{$code} or _error($z, "Code $code does not correspond to a defined segment");
+            push @children, X12::Schema::SegmentUse->new(
+                def => $elems->{$code},
+                name => $name, required => ($1 eq '1' ? 1 : 0), max_use => ($2 eq 'N' ? undef : 0 + $2),
+            );
+        }
+        else {
+            _error($z, "Child of a loop: or schema: element must be a loop or segment reference");
+        }
+    }
+
+    return X12::Schema::Sequence->new(
+        children => \@children, required => $min eq '1', max_use => ($max eq 'N' ? undef : 0 + $max),
+        name => $name,
+    );
+}
+
+1;

@@ -58,7 +58,7 @@ sub BUILD {
             croak "$desc can be empty, so it may not be repeated unambiguously"
                 if $empty[-1];
             croak "$desc is ambiguous when followed by itself"
-                if grep { exists $nofollow[-1]{$_} }, keys %{ $begin[-1] };
+                if grep { exists $nofollow[-1]{$_} } keys %{ $begin[-1] };
 
             $nofollow[-1] = { %{ $nofollow[-1] }, %{ $begin[-1] } };
         }
@@ -74,7 +74,7 @@ sub BUILD {
     # get initial
     my %initial;
     my $can_be_empty = 1;
-    for my $childix ( 0 .. $#elems ) {
+    for my $childix ( 0 .. $#$elems ) {
         %initial = (%initial, %{ $begin[$childix] });
         unless ($empty[$childix]) {
             $can_be_empty = 0;
@@ -85,7 +85,7 @@ sub BUILD {
     # check for composition errors
     my %excluded_from_continuation;
 
-    for my $ix ( 0 .. $#elems ) {
+    for my $ix ( 0 .. $#$elems ) {
         my $herename = $elems->[$ix]->name;
         my ($conflict) = grep { exists $excluded_from_continuation{$_} } keys %{ $begin[$ix] };
         if ($conflict) {
