@@ -12,8 +12,6 @@ has _suffix_re => (is => 'bare', isa =>'RegexpRef', init_arg => undef);
 
 has [qw(_segment_term _component_sep _repeat_sep _segment_term_suffix _element_sep)] => (is => 'bare', isa => 'Str', init_arg => undef);
 
-has isa11_is_repeat_sep => (is => 'ro', isa => 'Bool', default => 0);
-
 has segment_counter => (is => 'rw', isa => 'Int', default => 0);
 
 sub _parse {
@@ -24,8 +22,10 @@ sub _parse {
 
         my $ISA = substr($self->{buffer},0,106,"");
 
+        my $ver = substr($ISA, 84, 5);
+
         $self->{_element_sep} = substr($ISA, 3, 1);
-        $self->{_repeat_sep} = $self->{isa11_is_repeat_sep} ? substr($ISA, 82, 1) : undef;
+        $self->{_repeat_sep} = ($ver ge '00402') ? substr($ISA, 82, 1) : undef;
         $self->{_component_sep} = substr($ISA, 104, 1);
         $self->{_segment_term} = substr($ISA, 105, 1);
         $self->{buffer} =~ s/^(\r?\n?)//;
@@ -33,7 +33,7 @@ sub _parse {
 
         $self->_delims_changed;
 
-        # not quite a regular segment: values may include the component separator
+        # not quite a regular segment: values may include the component/repeat separator
 
         return [ map [[$_]], split /\Q$self->{_element_sep}/, substr($ISA,0,105) ];
     }

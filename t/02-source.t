@@ -6,9 +6,10 @@ BEGIN { use_ok('X12::Schema::TokenSource') or die }
 
 my $O;
 
-my $ISA='ISA*00*          *00*          *ZZ*TEST           *ZZ*TEST           *010101*1200*U*00401*000001208*0*P*/~';
+my $ISA1 = 'ISA*00*          *00*          *ZZ*TEST           *ZZ*TEST           *010101*1200*U*00401*000001208*0*P*/~';
+my $ISA2 = 'ISA*00*          *00*          *ZZ*TEST           *ZZ*TEST           *010101*1200*U*00402*000001208*0*P*/~';
 
-$O = new_ok 'X12::Schema::TokenSource', [ buffer => "${ISA}FOO*BUR~" ], "create source with 2 tokens";
+$O = new_ok 'X12::Schema::TokenSource', [ buffer => "${ISA1}FOO*BUR~" ], "create source with 2 tokens";
 
 is ref($O->get), 'ARRAY', 'can read ISA';
 
@@ -25,7 +26,7 @@ is $O->segment_counter, 2, "segment_counter counts actually used segments";
 
 
 
-$O = X12::Schema::TokenSource->new(buffer => "${ISA}\r\nFOO*BUR/S*A/B~\r\n", isa11_is_repeat_sep => 1);
+$O = X12::Schema::TokenSource->new(buffer => "${ISA2}\r\nFOO*BUR/S*A/B~\r\n");
 
 $O->get;
 
