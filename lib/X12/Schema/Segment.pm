@@ -12,7 +12,7 @@ has incomplete   => (isa => 'Bool', is => 'ro', default => 0);
 sub encode {
     my ($self, $sink, $obj) = @_;
 
-    die 'Segment '.$self->name." must be encoded using a HASH\n" unless $obj && ref($obj) eq 'HASH' && !blessed($obj);
+    die 'Segment '.$self->friendly." must be encoded using a HASH\n" unless $obj && ref($obj) eq 'HASH' && !blessed($obj);
 
     $_->check($obj) for @{ $self->constraints };
 
@@ -33,11 +33,12 @@ sub encode {
         }
     }
 
-    die "Excess fields for segment ".$self->name.": ".join(', ', sort keys %tmp) if %tmp;
+    die "Excess fields for segment ".$self->friendly.": ".join(', ', sort keys %tmp) if %tmp;
     pop @bits while @bits && $bits[-1] eq '';
 
-    $sink->segment( join($sink->element_sep, $self->tag, @bits) . $sink->segment_term ) if @bits;
-    return @bits ? 1 : 0;
+    die "Segment ".$self->friendly." must contain data if it is present" unless @bits;
+
+    $sink->segment( join($sink->element_sep, $self->tag, @bits) . $sink->segment_term );
 }
 
 __PACKAGE__->meta->make_immutable;
