@@ -14,6 +14,8 @@ has [qw(_segment_term _component_sep _repeat_sep _segment_term_suffix _element_s
 
 has isa11_is_repeat_sep => (is => 'ro', isa => 'Bool', default => 0);
 
+has segment_counter => (is => 'rw', isa => 'Int', default => 0);
+
 sub _parse {
     my ($self) = @_;
 
@@ -26,7 +28,8 @@ sub _parse {
         $self->{_repeat_sep} = $self->{isa11_is_repeat_sep} ? substr($ISA, 82, 1) : undef;
         $self->{_component_sep} = substr($ISA, 104, 1);
         $self->{_segment_term} = substr($ISA, 105, 1);
-        ($self->{_segment_term_suffix}) = ($self->{buffer} =~ s/^(\r?\n?)//);
+        $self->{buffer} =~ s/^(\r?\n?)//;
+        $self->{_segment_term_suffix} = $1;
 
         $self->_delims_changed;
 
@@ -37,7 +40,8 @@ sub _parse {
 
     # DIVERSITY: UNx, BIN, BDS segments, maybe X12.58 but I don't have a clear idea what that entails
 
-    my ($segment) = $self->{buffer} =~ s/$self->{_segment_re}// or return;
+    $self->{buffer} =~ s/$self->{_segment_re}// or return;
+    my $segment = $1;
 
     # DIVERSITY: EDIFACT release characters
 
@@ -59,19 +63,6 @@ sub _delims_changed {
     $self->{_segment_re} = "^([^\Q$t\E]*)\Q$t$ts\E";
 }
 
-sub get {
-    my ($self) = @_;
-
-    return delete $self->{_lookahead} if $self->{_lookahead};
-
-    my $res;
-
-    while (1) {
-        $res = $self->_parse and return $res;
-        $self->filler->() or return ();
-    }
-}
-
 sub peek {
     my ($self) = @_;
 
@@ -83,6 +74,25 @@ sub peek {
         $res = $self->_parse and return $self->{_lookahead} = $res;
         $self->filler->() or return ();
     }
+}
+
+sub get {
+    my ($self) = @_;
+
+    $self->peek;
+    if ($self->{_lookahead}) {
+        $self->{segment_counter}++;
+        return delete $self->{_lookahead};
+    }
+    return undef;
+}
+
+sub peek_code {
+    my ($self) = @_;
+
+    $self->peek;
+
+    return !$self->{_lookahead} ? '' : $self->{_lookahead}[0][0][0]; # DIVERSITY explicit nesting needs more info
 }
 
 __PACKAGE__->meta->make_immutable;
