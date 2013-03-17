@@ -1,12 +1,12 @@
 use strict;
 use warnings;
-use Test::More tests => 114;
+use Test::More tests => 121;
 use Test::Exception;
 
 BEGIN { use_ok 'X12::Schema::Element'; }
 use X12::Schema::TokenSink;
 
-my $sink = X12::Schema::TokenSink->new( element_sep => '*', segment_term => "~\n", component_sep => '\\', repeat_sep => '^' );
+my $sink = X12::Schema::TokenSink->new( element_sep => '*', segment_term => "~\n", component_sep => '\\', repeat_sep => '^', non_charset_re => qr/[^\x00-\xFF]/ );
 
 my $el;
 
@@ -14,7 +14,7 @@ throws_ok { X12::Schema::Element->new(name => 'Foo') } qr/type.*required/;
 throws_ok { X12::Schema::Element->new(type => 'N 3/3') } qr/name.*required/;
 
 throws_ok { X12::Schema::Element->new(name => 'Foo', type => 'X 2/3') } qr/type at BUILD must look like/;
-throws_ok { X12::Schema::Element->new(name => 'Foo', type => 'ID 2/3') } qr/expand required/;
+throws_ok { X12::Schema::Element->new(name => 'Foo', type => 'R 2/3', expand => { }) } qr/expand/;
 throws_ok { X12::Schema::Element->new(name => 'Foo', type => 'R3 2/3') } qr/Numeric postfix/;
 
 sub elem_test {
@@ -98,6 +98,11 @@ elem_test('AN 2/4',
     encode => 'FFFF' => 'FFFF',
     encode => 'FFFFF' => qr/Value FFFFF does not fit in 4 characters for/,
     encode => 'F^' => qr/Value F\^ after encoding would contain a prohibited delimiter.*/,
+    encode => 'F   ' =>  'F ',
+    encode => ' F ' => ' F',
+    encode => '   ' => qr/one non-space.*/,
+    encode => "\r" => qr/non-print.*/,
+    encode => "\x{3BB}" => qr/charset.*/,
 );
 
 elem_test('DT 6/6',

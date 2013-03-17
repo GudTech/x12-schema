@@ -96,6 +96,10 @@ sub encode {
         $string = "".$value;
         $string =~ s/ *$//;
 
+        length($string) or die "Value $value must have at least one non-space for ".$self->name."\n";
+        $string =~ /$sink->{non_charset_re}/ and die "Value $value contains a character outside the destination charset for ".$self->name."\n";
+        $string =~ /\P{Print}/ and die "Value $value contains a non-printable character for ".$self->name."\n";
+
         length($string) > $maxp and die "Value $value does not fit in $maxp characters for ".$self->name."\n";
         length($string) < $minp and $string .= (" " x ($minp - length($string)));
     }
