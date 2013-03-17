@@ -4,12 +4,14 @@ use Moose;
 use namespace::autoclean;
 
 has delim_re => (is => 'ro', isa => 'RegexpRef', init_arg => undef);
+has non_charset_re => (is => 'ro', isa => 'RegexpRef', default => sub { qr/(?!)/ });
 
 has [qw( segment_term element_sep component_sep )] => (is => 'ro', isa => 'Str', required => 1);
 has repeat_sep => (is => 'ro', isa => 'Str');
 
 has output => (is => 'rw', isa => 'Str', default => '', init_arg => undef);
 has output_func => (is => 'rw', isa => 'CodeRef');
+has segment_counter => (is => 'rw', isa => 'Int', default => 0, init_arg => undef);
 
 # DIVERSITY: this will need to include flags to control the output in other ways, such as UN/EDIFACT mode, whether to use exponential notation, etc
 
@@ -34,6 +36,7 @@ sub BUILD {
 sub segment {
     my ($self, $seg) = @_;
 
+    $self->{segment_counter}++;
     $self->{output_func} ? $self->{output_func}->($seg) : ( $self->{output} .= $seg );
 }
 

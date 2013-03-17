@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 26;
+use Test::More tests => 28;
 use Test::Exception;
 
 BEGIN { use_ok "X12::Schema::TokenSink"; }
@@ -55,9 +55,11 @@ my $ext = '';
 $baseline = new_ok 'X12::Schema::TokenSink', [%args, output_func => sub { $ext .= $_[0] }], 'new with output_func';
 
 is $ext, '', 'external output initially empty';
+is $baseline->segment_counter, 0, 'ctr initially 0';
 
 $baseline->segment('foo');
 is $ext, 'foo', 'first external output recorded';
 
 $baseline->segment('bar');
 is $ext, 'foobar', 'subseq external output recorded';
+is $baseline->segment_counter, 2, 'ctr records segments';
