@@ -3,6 +3,7 @@ package X12::Schema::Element;
 use DateTime;
 
 use Moose;
+use Try::Tiny;
 use namespace::autoclean;
 
 has name       => (is => 'ro', isa => 'Str', required => 1);
@@ -51,6 +52,22 @@ sub encode {
     return $string;
 }
 
+sub decode {
+    my ($self, $src, $text) = @_;
+
+    my $type = $self->{type};
+    my $method = "_decode_$type";
+
+    my ($code, $len, $value) = $self->$method( $src, $text );
+
+    unless ($code) {
+        $code = 'elem_too_long'  if $len > $self->{max_length};
+        $code = 'elem_too_short' if $len < $self->{min_length};
+    }
+
+    return ($code, $value);
+}
+
 # can't just use sprintf for these two because field widths are in _digits_.  sign magnitude hoy!
 sub _encode_R {
     my ($self, $minp, $maxp, $sink, $value) = @_;
@@ -79,6 +96,17 @@ sub _encode_R {
     }
 }
 
+sub _decode_R {
+    my ($self, $src, $text) = @_;
+
+    # all the x12.6 restrictions are in that regex
+    return 'elem_bad_syntax' if $text !~ /^ -?  (?: [0-9]+ | \.[0-9]+ | [0-9]+\.[0-9]* )   (?: E -? [0-9]+ )? $/x;
+
+    # x12.6 reals are a subset of perl reals, yay
+
+    return undef, ($text =~ tr/0-9//), 0+$text;
+}
+
 sub _encode_N {
     my ($self, $minp, $maxp, $sink, $value) = @_;
     my $string;
@@ -90,6 +118,14 @@ sub _encode_N {
     return sprintf "%0*d", ($munge < 0 ? $minp + 1 : $minp), $munge;
 }
 
+sub _decode_N {
+    my ($self, $src, $text) = @_;
+
+    return 'elem_bad_syntax' if $text !~ /^-?[0-9]+$/;
+
+    return undef, ($text =~ tr/0-9//), $text * (10 ** -$self->{scale});
+}
+
 sub _encode_ID {
     my ($self, $minp, $maxp, $sink, $value) = @_;
     my $string;
@@ -98,6 +134,19 @@ sub _encode_ID {
         $value = ($self->contract->{$value} || die "Value $value not contained in ".join(', ',sort keys %{$self->contract})." for ".$self->name."\n");
     }
     return $self->_encode_AN( $minp, $maxp, $sink, $value );
+}
+
+sub _decode_ID {
+    my ($self, $src, $text) = @_;
+
+    my ($err, $len, $val) = $self->_decode_AN($src, $text);
+
+    if ($self->expand) {
+        $val = defined($val) ? $self->expand->{$val} : undef;
+        $err ||= 'elem_bad_code' unless $val;
+    }
+
+    return ($err, $len, $val);
 }
 
 sub _encode_AN {
@@ -116,8 +165,18 @@ sub _encode_AN {
     return $string;
 }
 
-    # on input, dates and times are not meaningfully associated (with each other, or with a time zone) so we have to generate isolated dates
-    # (floating, 00:00 time) and isolated times (floating DateTime for 2000-01-01 - gross)
+sub _decode_AN {
+    my ($self, $src, $text) = @_;
+
+    my $tcopy = $text;
+    $tcopy =~ s/ *$//;
+
+    return 'elem_bad_syntax' if $tcopy =~ /\P{Print}/ || $tcopy eq '';
+    return undef, length($text), $tcopy;
+}
+
+# on input, dates and times are not meaningfully associated (with each other, or with a time zone) so we have to generate isolated dates
+# (floating, 00:00 time) and isolated times (floating DateTime for 2000-01-01 - gross)
 sub _encode_DT {
     my ($self, $minp, $maxp, $sink, $value) = @_;
 
@@ -134,6 +193,27 @@ sub _encode_DT {
     else {
         die "Field size does not permit any date format ".$self->name."\n";
     }
+}
+
+sub _decode_DT {
+    my ($self, $src, $text) = @_;
+
+    my ($y, $m, $d) = $text =~ /^([0-9]{2}(?:[0-9]{2})?)([0-9]{2})([0-9]{2})$/
+        or return 'elem_bad_syntax';
+
+    if (length $y == 2) {
+        my $cy = DateTime->now->year;
+
+        $y += 100 * sprintf "%.0f", ($cy - $y) / 100;
+    }
+
+    my @ret;
+    try {
+        @ret = (undef, length($text), DateTime->new( year => $y, month => $m, day => $d ));
+    } catch {
+        @ret = 'elem_bad_date';
+    };
+    @ret;
 }
 
 sub _encode_TM {
@@ -153,9 +233,24 @@ sub _encode_TM {
     return $value->format_cldr($fmt);
 }
 
+sub _decode_TM {
+    my ($self, $src, $text) = @_;
+
+    my ($h,$m,$s,$ns) = ($text . '0'x11) =~ /^([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{9})[0-9]*$/
+        or return 'elem_bad_syntax';
+
+    return 'elem_bad_time' unless $h < 24 && $m < 60 && $s < 60;
+    return undef, length($text), DateTime->new( year => 0, hour => $h, minute => $m, second => $s, nanosecond => $ns );
+}
+
 sub _encode_B {
     my ($self, $minp, $maxp, $sink, $value) = @_;
     return $value;
+}
+
+sub _decode_B {
+    my ($self, $src, $text) = @_;
+    return undef, length($text), $text;
 }
 
 __PACKAGE__->meta->make_immutable;
