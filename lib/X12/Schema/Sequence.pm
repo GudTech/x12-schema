@@ -8,6 +8,10 @@ with 'X12::Schema::Sequencable';
 
 has children => (isa => 'ArrayRef[X12::Schema::Sequencable]', is => 'ro', required => 1);
 
+has _cooked_begin    => (isa => 'ArrayRef[HashRef]', is => 'bare');
+has _cooked_nofollow => (isa => 'ArrayRef[HashRef]', is => 'bare');
+has _cooked_empty    => (isa => 'ArrayRef[Bool]', is => 'bare');
+
 # DIVERSITY: These loop rules are much looser than prescribed by X12.6
 # DIVERSITY: may need to handle UN/EDIFACT's explicit nesting indicators
 
@@ -32,12 +36,63 @@ sub encode {
             $elem->encode($sink, $_) for @$passed;
         }
         else {
-            die "Segment or loop ".$elem->name." is required" if $elem->required && !$passed;
-            $elem->encode($sink, $passed);
+            die "Segment or loop ".$elem->name." is required" if $elem->required && !defined($passed);
+            $elem->encode($sink, $passed) if defined($passed);
         }
     }
 
     die "Unused children passed to ".$self->name.": ".join(', ',sort keys %tmp) if %tmp;
+}
+
+sub decode {
+    my ($self, $src, $exit_cont) = @_;
+
+    my $kids = $self->{children};
+    my @internal_cont;
+    my %data;
+
+    $internal_cont[ @$kids ] = $exit_cont;
+
+    for my $i ( $#$kids .. 0 ) {
+        $internal_cont[$i] = $self->{_cooked_empty}[$i] ?
+            { %{ $self->{_cooked_begin}[$i] }, %{ $internal_cont[$i+1] } } :
+            $self->{_cooked_begin}[$i];
+    }
+
+    for my $i ( 0 .. $#$kids ) {
+        if ($src->peek_code && !$internal_cont[$i]{$src->peek_code}) {
+            $src->get;
+            die "Unexpected segment at ".$src->segment_counter."\n";
+        }
+
+        my $kid = $kids->[$i];
+
+        if (defined($kid->max_use) && $kid->max_use == 1) {
+            if ($kid->_initial_tags->{ $src->peek_code }) {
+                $data{ $kid->name } = $kid->decode( $src, $internal_cont[$i+1] );
+            } elsif ($kid->required) {
+                die $kid->name." is required at ".$src->segment_counter."\n";
+            }
+        }
+        else {
+            my @accum;
+            while ($kid->_initial_tags->{ $src->peek_code }) {
+                if (defined($kid->max_use) && @accum >= $kid->max_use) {
+                    die $kid->name." exceeds ".$kid->max_use." occurrences at ".$src->segment_counter."\n";
+                }
+
+                push @accum, $kid->decode( $src, $internal_cont[$i] ); # deliberately $i - we'll loop back
+            }
+
+            if ($kid->required && !@accum) {
+                die $kid->name."is required at ".$src->segment_counter."\n";
+            }
+
+            $data{$kid->name} = \@accum;
+        }
+    }
+
+    return \%data;
 }
 
 sub BUILD {
@@ -70,6 +125,10 @@ sub BUILD {
             $empty[-1] = 1;
         }
     }
+
+    $self->{_cooked_empty} = \@empty;
+    $self->{_cooked_nofollow} = \@nofollow;
+    $self->{_cooked_begin} = \@begin;
 
     # get initial
     my %initial;

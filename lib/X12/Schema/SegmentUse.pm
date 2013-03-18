@@ -3,7 +3,7 @@ package X12::Schema::SegmentUse;
 use Moose;
 use namespace::autoclean;
 
-has def => (is => 'ro', isa => 'X12::Schema::Segment', required => 1, handles => ['encode']);
+has def => (is => 'ro', isa => 'X12::Schema::Segment', required => 1, handles => ['encode','decode']);
 
 with 'X12::Schema::Sequencable';
 

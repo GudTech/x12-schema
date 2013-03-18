@@ -12,6 +12,6 @@ has _can_be_empty => (isa => 'Bool', is => 'rw', init_arg => undef);
 has _initial_tags => (isa => 'HashRef', is => 'rw', init_arg => undef);
 has _ambiguous_end_tags => (isa => 'HashRef', is => 'rw', init_arg => undef);
 
-requires qw( encode );
+requires qw( encode decode );
 
 1;
