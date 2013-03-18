@@ -3,8 +3,6 @@ package X12::Schema::TokenSource;
 use Moose;
 use namespace::autoclean;
 
-use X12::Schema::SyntaxError;
-
 has buffer => (is => 'bare', isa => 'Str', default => '');
 has filler => (is => 'ro', isa => 'CodeRef', default => sub { sub { 0 } });
 
@@ -15,13 +13,9 @@ has _suffix_re => (is => 'bare', isa =>'RegexpRef', init_arg => undef);
 has [qw(_segment_term _component_sep _repeat_sep _segment_term_suffix _element_sep)] => (is => 'bare', isa => 'Str', init_arg => undef);
 
 has segment_counter => (is => 'rw', isa => 'Int', default => 0);
-has errors => (is => 'ro', isa => 'ArrayRef[X12::Schema::SyntaxError]', default => sub { [ ] }, init_arg => undef);
-has _fatal_error => (is => 'bare', isa => 'Bool');
 
 sub _parse {
     my ($self) = @_;
-
-    return if $self->{_fatal_error};
 
     if (substr($self->{buffer},0,3) eq 'ISA') {
         return if length($self->{buffer}) < 109; # ISA itself is 106 chars, but we need to see the beginning of GE to get the separator
@@ -46,9 +40,7 @@ sub _parse {
     }
 
     unless ($self->{_segment_re}) {
-        $self->{_fatal_error} = 1;
-        $self->logerror( 'isa_not_first' );
-        return;
+        die "ISA segment must appear first\n";
     }
 
     # DIVERSITY: UNx, BIN, BDS segments, maybe X12.58 but I don't have a clear idea what that entails
@@ -75,7 +67,7 @@ sub set_delims {
 
     my %u;
     if (grep( defined $_ && $u{$_}++, @$self{ qw( _element_sep _repeat_sep _component_sep _segment_term ) } )) {
-        $self->logerror( 'nonunique_delims' );
+        die "Delimiters are not unique\n";
     }
 
     my $t = $self->{_segment_term};
@@ -120,23 +112,7 @@ sub expect_eof {
 
     1 until length($self->{buffer}) or !$self->filler->();
 
-    $self->logerror('garbage') if length $self->{buffer};
-}
-
-my %errdefs = (
-    garbage => { message => 'Trailing garbage at EOF' },
-    isa_not_first => { message => 'EDI file must start with an ISA segment' },
-    nonunique_delims => { message => 'Delimiters are not unique' },
-);
-
-sub logerror {
-    my ($self, $code) = splice @_,0,2;
-
-    my $def = $errdefs{$code} or Carp::croak "Undefined error $code";
-
-    push @{ $self->errors }, X12::Schema::SyntaxError->new(
-        code => $code, message => $def->{message}
-    );
+    die "Unexpected data after transmission\n" if length($self->{buffer});
 }
 
 __PACKAGE__->meta->make_immutable;

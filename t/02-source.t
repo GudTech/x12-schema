@@ -1,6 +1,7 @@
 use strict;
 use warnings;
-use Test::More tests => 17;
+use Test::More tests => 16;
+use Test::Exception;
 
 BEGIN { use_ok('X12::Schema::TokenSource') or die }
 
@@ -25,8 +26,7 @@ is_deeply $O->peek_code, '', 'peek_code on empty is ""';
 
 is $O->segment_counter, 2, "segment_counter counts actually used segments";
 
-$O->expect_eof;
-is_deeply $O->errors, [], "no errors";
+lives_ok { $O->expect_eof } 'nothing trailing';
 
 
 $O = X12::Schema::TokenSource->new(buffer => "${ISA2}\r\nFOO*BUR/S*A/B~\r\nK");
@@ -34,20 +34,13 @@ $O = X12::Schema::TokenSource->new(buffer => "${ISA2}\r\nFOO*BUR/S*A/B~\r\nK");
 $O->get;
 
 is_deeply $O->get, [ [['FOO']], [['B'],['R','S']], [['A','B']] ], "parsing test for 'advanced features'";
-is_deeply $O->errors, [], "no errors";
-$O->expect_eof;
 
-is_deeply [map $_->code, @{$O->errors}], ['garbage'], 'trailing garbage noticed by expect_eof';
+throws_ok { $O->expect_eof } qr/Unexpected/, 'trailing garbage noticed by expect_eof';
 
 $O = X12::Schema::TokenSource->new(buffer => "${ISA3}\r\nFOO*BUR/S*A/B~\r\n");
-$O->get;
 
-is_deeply [map $_->code, @{$O->errors}], ['nonunique_delims'], 'delimiter collision noticed';
+throws_ok { $O->get } qr/unique/, 'delimiter collision noticed';
 
 $O = X12::Schema::TokenSource->new(buffer => "FOO*BUR/S*A/B~\r\n");
-$O->get;
-$O->get;
 
-is_deeply [map $_->code, @{$O->errors}], ['isa_not_first'], 'missing ISA noticed';
-
-
+throws_ok { $O->get } qr/ISA/, 'missing ISA noticed';
