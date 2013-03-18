@@ -91,6 +91,12 @@ sub decode {
         die "Too many data elements at $i\n";
     }
 
+    for my $c ( @{ $self->constraints } ) {
+        if ( () = $c->check(\%data) ) {
+            die $c->describe . " at $i\n";
+        }
+    }
+
     return \%data;
 }
 

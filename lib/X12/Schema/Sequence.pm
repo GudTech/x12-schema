@@ -53,7 +53,7 @@ sub decode {
 
     $internal_cont[ @$kids ] = $exit_cont;
 
-    for my $i ( $#$kids .. 0 ) {
+    for my $i ( reverse 0 .. $#$kids ) {
         $internal_cont[$i] = $self->{_cooked_empty}[$i] ?
             { %{ $self->{_cooked_begin}[$i] }, %{ $internal_cont[$i+1] } } :
             $self->{_cooked_begin}[$i];
@@ -71,21 +71,21 @@ sub decode {
             if ($kid->_initial_tags->{ $src->peek_code }) {
                 $data{ $kid->name } = $kid->decode( $src, $internal_cont[$i+1] );
             } elsif ($kid->required) {
-                die $kid->name." is required at ".$src->segment_counter."\n";
+                die $kid->name." is required at ".($src->segment_counter+1)."\n";
             }
         }
         else {
             my @accum;
             while ($kid->_initial_tags->{ $src->peek_code }) {
                 if (defined($kid->max_use) && @accum >= $kid->max_use) {
-                    die $kid->name." exceeds ".$kid->max_use." occurrences at ".$src->segment_counter."\n";
+                    die $kid->name." exceeds ".$kid->max_use." occurrences at ".($src->segment_counter+1)."\n";
                 }
 
                 push @accum, $kid->decode( $src, $internal_cont[$i] ); # deliberately $i - we'll loop back
             }
 
             if ($kid->required && !@accum) {
-                die $kid->name."is required at ".$src->segment_counter."\n";
+                die $kid->name." is required at ".($src->segment_counter+1)."\n";
             }
 
             $data{$kid->name} = \@accum;
