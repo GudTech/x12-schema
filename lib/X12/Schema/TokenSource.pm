@@ -54,9 +54,9 @@ sub _parse {
 
     return [
         map [
-            map [ split /\Q$csep/, $_ ],
-            (defined($rsep) ? split /\Q$rsep/, $_ : $_)
-        ], split /\Q$esep/, $segment
+            map [ $_ ne '' ? split /\Q$csep/, $_, -1 : $_ ],
+            ((defined($rsep) && $_ ne '') ? split /\Q$rsep/, $_, -1 : $_)
+        ], split /\Q$esep/, $segment, -1
     ];
 }
 

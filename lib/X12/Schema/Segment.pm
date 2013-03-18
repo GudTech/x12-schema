@@ -45,11 +45,53 @@ sub encode {
     $sink->segment( join($sink->element_sep, $self->tag, @bits) . $sink->segment_term );
 }
 
+# DIVERSITY: log errors for 997/999/CONTROL, compound elements, repeated elements
+
 # assumes that the lookahead tag has already been validated
 sub decode {
     my ($self, $src) = @_;
 
     my $tokens = $src->get;
+
+    my $i = $src->segment_counter;
+    die "Malformed segment tag at $i\n" if @{$tokens->[0]} != 1 or @{$tokens->[0][0]} != 1;
+    die "Segment with nothing but a terminator at $i\n" if @$tokens == 1;
+
+    my %data;
+
+    my $j = 1;
+
+    for my $el (@{ $self->elements }) {
+        my $inp = $j < @$tokens ? $tokens->[$j] : [['']];
+        my $name = $el->name;
+
+        die "Element repetition unsupported at $i\n" if @$inp != 1;
+        die "Composite elements unsupported at $i\n" if @{$inp->[0]} != 1;
+
+        $inp = $inp->[0][0];
+
+        if ($inp eq '') {
+            die "Required element $name is missing at $i\n" if $el->required;
+            $data{ $name } = undef;
+        } else {
+            my ($err, $parsed) = $el->decode($src, $inp);
+
+            die "Element $name is invalid ($err) at $i\n" if $err;
+            $data{ $name } = $parsed;
+        }
+
+        $j++;
+    }
+
+    if ($tokens->[-1][0][0] eq '') {
+        die "Illegal trailing empty element at $i\n";
+    }
+
+    if ($j < @$tokens) {
+        die "Too many data elements at $i\n";
+    }
+
+    return \%data;
 }
 
 __PACKAGE__->meta->make_immutable;
