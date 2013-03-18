@@ -14,7 +14,11 @@ sub encode {
 
     die 'Segment '.$self->friendly." must be encoded using a HASH\n" unless $obj && ref($obj) eq 'HASH' && !blessed($obj);
 
-    $_->check($obj) for @{ $self->constraints };
+    for my $c ( @{ $self->constraints } ) {
+        if ( () = $c->check($obj) ) {
+            die $c->describe . "\n";
+        }
+    }
 
     my %tmp = %$obj;
     my @bits;
@@ -33,12 +37,19 @@ sub encode {
         }
     }
 
-    die "Excess fields for segment ".$self->friendly.": ".join(', ', sort keys %tmp) if %tmp;
+    die "Excess fields for segment ".$self->friendly.": ".join(', ', sort keys %tmp)."\n" if %tmp;
     pop @bits while @bits && $bits[-1] eq '';
 
-    die "Segment ".$self->friendly." must contain data if it is present" unless @bits;
+    die "Segment ".$self->friendly." must contain data if it is present\n" unless @bits;
 
     $sink->segment( join($sink->element_sep, $self->tag, @bits) . $sink->segment_term );
+}
+
+# assumes that the lookahead tag has already been validated
+sub decode {
+    my ($self, $src) = @_;
+
+    my $tokens = $src->get;
 }
 
 __PACKAGE__->meta->make_immutable;

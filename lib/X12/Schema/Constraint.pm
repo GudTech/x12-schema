@@ -11,8 +11,6 @@ has all_or_none  => (is => 'ro', isa => 'ArrayRef[Str]');
 has at_least_one => (is => 'ro', isa => 'ArrayRef[Str]');
 has at_most_one  => (is => 'ro', isa => 'ArrayRef[Str]');
 
-has perl         => (is => 'ro', isa => 'CodeRef');
-
 sub check {
     my ($self, $values) = @_;
     my $key;
@@ -21,42 +19,62 @@ sub check {
         my $test;
         if (defined($values->{$key})) {
             if ($test = $self->{require_one}) {
-                die "If $key is present, then so must be one of @$test\n"
-                    unless grep defined($values->{$_}), @$test;
+                return if grep defined($values->{$_}), @$test;
+                return @$test;
             }
             elsif ($test = $self->{require_all}) {
-                die "If $key is present, then so must be all of @$test\n"
-                    if grep !defined($values->{$_}), @$test;
+                return grep !defined($values->{$_}), @$test;
             }
         }
     }
     elsif ($key = $self->{all_or_none}) {
         my $count = grep defined ($values->{$_}), @$key;
         if ($count && $count < @$key) {
-            die "All or none of @$key must be present\n";
+            return grep !defined($values->{$_}), @$key;
         }
     }
     elsif ($key = $self->{at_least_one}) {
         my $count = grep defined ($values->{$_}), @$key;
         if (!$count) {
-            die "At least one of @$key must be present\n";
+            return @$key;
         }
     }
     elsif ($key = $self->{at_most_one}) {
-        my $count = grep defined ($values->{$_}), @$key;
-        if ($count > 1) {
-            die "At most one of @$key must be present\n";
+        my @present = grep defined ($values->{$_}), @$key;
+        if (@present > 1) {
+            return @present;
         }
     }
-    elsif ($key = $self->{perl}) {
-        $key->($values);
+    return ();
+}
+
+sub describe {
+    my ($self) = @_;
+    my ($key, $test);
+
+    if ($key = $self->{if_present}) {
+        if ($test = $self->{require_one}) {
+            return "If $key is present, then so must be one of @$test";
+        }
+        elsif ($test = $self->{require_all}) {
+            return "If $key is present, then so must be all of @$test";
+        }
+    }
+    elsif ($key = $self->{all_or_none}) {
+        return "All or none of @$key must be present";
+    }
+    elsif ($key = $self->{at_least_one}) {
+        return "At least one of @$key must be present";
+    }
+    elsif ($key = $self->{at_most_one}) {
+        return "At most one of @$key must be present";
     }
 }
 
 sub BUILD {
     my ($self) = @_;
 
-    if (1 != grep defined ($self->{$_}), qw( if_present all_or_none at_least_one at_most_one perl )) {
+    if (1 != grep defined ($self->{$_}), qw( if_present all_or_none at_least_one at_most_one )) {
         confess "syntax note must have exactly one type";
     }
 
