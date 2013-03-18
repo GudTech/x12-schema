@@ -3,9 +3,9 @@ package X12::Schema::SegmentUse;
 use Moose;
 use namespace::autoclean;
 
-with 'X12::Schema::Sequencable';
-
 has def => (is => 'ro', isa => 'X12::Schema::Segment', required => 1, handles => ['encode']);
+
+with 'X12::Schema::Sequencable';
 
 sub BUILD {
     my ($self) = @_;
