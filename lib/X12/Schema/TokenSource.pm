@@ -30,14 +30,15 @@ sub _parse {
 
         my $ver = substr($ISA, 84, 5);
 
-        $self->{_element_sep} = substr($ISA, 3, 1);
-        $self->{_repeat_sep} = ($ver ge '00402') ? substr($ISA, 82, 1) : undef;
-        $self->{_component_sep} = substr($ISA, 104, 1);
-        $self->{_segment_term} = substr($ISA, 105, 1);
         $self->{buffer} =~ s/^(\r?\n?)//;
-        $self->{_segment_term_suffix} = $1;
 
-        $self->_delims_changed;
+        $self->set_delims(
+            substr($ISA, 104, 1),
+            ($ver ge '00402') ? substr($ISA, 82, 1) : undef,
+            substr($ISA, 3, 1),
+            substr($ISA, 105, 1),
+            $1
+        );
 
         # not quite a regular segment: values may include the component/repeat separator
 
@@ -67,8 +68,10 @@ sub _parse {
     ];
 }
 
-sub _delims_changed {
-    my ($self) = @_;
+sub set_delims {
+    my $self = shift;
+
+    @$self{ qw( _component_sep _repeat_sep _element_sep _segment_term _segment_term_suffix ) } = @_;
 
     my %u;
     if (grep( defined $_ && $u{$_}++, @$self{ qw( _element_sep _repeat_sep _component_sep _segment_term ) } )) {
