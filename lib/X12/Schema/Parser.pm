@@ -143,7 +143,7 @@ sub _interpret_segment {
         }
     }
 
-    @elements or _error($node, "Non-incomplete segment without defined elements");
+    @elements or $incomplete or _error($node, "Non-incomplete segment without defined elements");
 
     @constraints = map { $self->_interpret_constraint(\%elem_ok, $_) } @constraints;
 

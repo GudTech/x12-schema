@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 28;
+use Test::More tests => 30;
 use Test::Exception;
 
 use X12::Schema::Element;
@@ -69,3 +69,6 @@ throws_ok { decode('FOO*ABCDE~') } qr/Required/;
 throws_ok { decode('FOO**ABCDE~') } qr/Required/;
 is_deeply decode('FOO*ABCDE*FGHIJ~'), { B => 'FGHIJ', A => 'ABCDE' }, 'correct mandatory parse';
 
+$seg = new_ok 'X12::Schema::Segment', [ tag => 'FOO', friendly => 'Foo', elements => [], incomplete => 1 ];
+
+is_deeply decode('FOO*1*2*3~'), 'UNIMPLEMENTED', 'segment stubbing';
