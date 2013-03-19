@@ -390,10 +390,9 @@ segment: FO1 Foo
 segment: FO2 Foo
     A AN 1/1
 segment: FO3 Foo +incomplete
-    A AN 1/1
 ==>
 my %S; $S{$_} = X12::Schema::Segment->new( tag => $_, friendly => 'Foo', incomplete => ($_ eq 'FO3' ? 1 : 0), elements => [
-    X12::Schema::Element->new( name => 'A', type => 'AN 1/1' )
+    ($_ eq 'FO3') ? () : X12::Schema::Element->new( name => 'A', type => 'AN 1/1' )
 ] ) for qw( FO1 FO2 FO3 );
 X12::Schema->new(root => X12::Schema::Sequence->new( required => 1, max_use => 1, name => 'ROOT', children => [
     X12::Schema::SegmentUse->new( def => $S{FO1}, name => 'Foo1', required => 1, max_use => 1 ),
