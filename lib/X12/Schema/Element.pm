@@ -9,10 +9,12 @@ use namespace::autoclean;
 has name       => (is => 'ro', isa => 'Str', required => 1);
 has required   => (is => 'ro', isa => 'Bool', default => 0);
 
+has refno      => (is => 'ro', isa => 'Int');
 has type       => (is => 'ro', isa => 'Str', required => 1);
 has expand     => (is => 'ro', isa => 'HashRef[Str]');
 has allow_blank=> (is => 'ro', isa => 'Bool'); # breaks syntax rules.  use ONLY for I02/I04 errata
 
+has bare_type  => (is => 'ro', isa => 'Str', init_arg => undef);
 has scale      => (is => 'ro', isa => 'Int', init_arg => undef);
 has min_length => (is => 'ro', isa => 'Int', init_arg => undef);
 has max_length => (is => 'ro', isa => 'Int', init_arg => undef);
@@ -29,7 +31,7 @@ sub BUILD {
     confess "Numeric postfix used only with N" if $1 ne 'N' && $2; # N means N0
     confess "expand used only with type = ID" if ($1 ne 'ID') && (defined $self->expand);
 
-    $self->{type} = $1;
+    $self->{bare_type} = $1;
     $self->{scale} = $2 || 0;
     $self->{min_length} = $3;
     $self->{max_length} = $4;
@@ -40,7 +42,7 @@ sub BUILD {
 sub encode {
     my ($self, $sink, $value) = @_;
 
-    my $type = $self->{type};
+    my $type = $self->{bare_type};
     my $method = "_encode_$type";
 
     my $string = $self->$method( $self->{min_length}, $self->{max_length}, $sink, $value );
@@ -56,7 +58,7 @@ sub encode {
 sub decode {
     my ($self, $src, $text) = @_;
 
-    my $type = $self->{type};
+    my $type = $self->{bare_type};
     my $method = "_decode_$type";
 
     my ($code, $len, $value) = $self->$method( $src, $text );

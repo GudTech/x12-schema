@@ -2,7 +2,7 @@ use strict;
 use warnings;
 
 use File::Slurp qw( read_file );
-use Test::More tests => 45;
+use Test::More tests => 51;
 use Try::Tiny;
 
 BEGIN { use_ok('X12::Schema::Parser') or die; }
@@ -29,7 +29,7 @@ for my $ex (@examples) {
     };
 
     use Data::Dumper;
-    is_deeply( $result, $expect, $name );
+    is_deeply( $result, $expect, $name ) or diag Dumper($result);
 }
 
 __DATA__
@@ -85,6 +85,12 @@ segment: FOO FooThing +incomplete +incomplete
     A AN 1/1
 ==>
 _F:1:Duplicate flag +incomplete
+
+--- segment: flag arguments
+segment: FOO FooThing +incomplete(bob)
+    A AN 1/1
+==>
+_F:1:Flag +incomplete does not use argument
 
 --- segment: invalid flag
 segment: FOO FooThing +unknown
@@ -185,25 +191,54 @@ _F:2:Invalid constraint type foo, must be one of (all_or_none, at_most_one, at_l
 segment: FOO Foo
     A   R 1/3  +bob
 ==>
-_F:2:Invalid flag +bob for element, valid flags are: +required +raw
+_F:2:Invalid flag +bob for element, valid flags are: +required +raw +element
+
+--- element: flag argument
+segment: FOO Foo
+    A   R 1/3  +element
+==>
+_F:2:Flag +element requires argument
+
+--- element: flag argument syntax
+segment: FOO Foo
+    A   R 1/3  +element(XYZ)
+==>
+_F:2:Flag +element has invalid syntax
 
 --- element: short token list
 segment: FOO foo
     A   R
 ==>
-_F:2:Element definition must be of the form FriendlyName TYPE MIN/MAX [+flags]
+_F:2:Element definition must be of the form FriendlyName TYPE MIN/MAX [+flags] or FriendlyName +element(REF)
 
 --- element: long token list
 segment: FOO foo
     A   R R R
 ==>
-_F:2:Element definition must be of the form FriendlyName TYPE MIN/MAX [+flags]
+_F:2:Element definition must be of the form FriendlyName TYPE MIN/MAX [+flags] or FriendlyName +element(REF)
 
 --- element: +raw for ID only
 segment: FOO foo
     A  N 1/3  +raw
 ==>
 _F:2:+raw only permitted for ID
+
+--- element: +element matching
+segment: FOO foo
+    A +element(42)
+==>
+_F:2:Reference number 42 corresponds to no defined element
+
+--- element: freestanding, +required verboten
+element: A N 1/3 +required +element(42)
+==>
+_F:1:+required not valid when defining an element type
+
+--- element: freestanding, +num required
+element: A N 1/3
+==>
+_F:1:Reference number required in freestanding element definition
+
 
 #### Values
 
@@ -362,19 +397,24 @@ X12::Schema->new(root => X12::Schema::Sequence->new( required => 1, max_use => 1
 --- elements: all features
 schema: foo
     FOO Foo1 1/1
+element: BOB  ID 2/2 +element(42)
+    CA -> California
+    NV -> Nevada
 segment: FOO Foo2
     A AN 1/1
-    B AN 1/10 +required
+    B AN 1/10 +required +element(33)
     C ID 2/2
         US -> UnitedStates
         CA -> Canada
     D ID 2/2 +raw
+    E +element(42)
 ==>
 my $FOO = X12::Schema::Segment->new( tag => 'FOO', friendly => 'Foo2', elements => [
     X12::Schema::Element->new( name => 'A', type => 'AN 1/1' ),
-    X12::Schema::Element->new( name => 'B', type => 'AN 1/10', required => 1 ),
+    X12::Schema::Element->new( name => 'B', type => 'AN 1/10', required => 1, refno => 33 ),
     X12::Schema::Element->new( name => 'C', type => 'ID 2/2', expand => { US => 'UnitedStates', CA => 'Canada' } ),
     X12::Schema::Element->new( name => 'D', type => 'ID 2/2' ),
+    X12::Schema::Element->new( name => 'E', type => 'ID 2/2', expand => { CA => 'California', NV => 'Nevada' }, refno => 42, ),
 ] );
 X12::Schema->new(root => X12::Schema::Sequence->new( required => 1, max_use => 1, name => 'ROOT', children => [
     X12::Schema::SegmentUse->new( def => $FOO, name => 'Foo1', required => 1, max_use => 1 )
