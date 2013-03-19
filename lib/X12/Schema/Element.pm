@@ -11,6 +11,7 @@ has required   => (is => 'ro', isa => 'Bool', default => 0);
 
 has type       => (is => 'ro', isa => 'Str', required => 1);
 has expand     => (is => 'ro', isa => 'HashRef[Str]');
+has allow_blank=> (is => 'ro', isa => 'Bool'); # breaks syntax rules.  use ONLY for I02/I04 errata
 
 has scale      => (is => 'ro', isa => 'Int', init_arg => undef);
 has min_length => (is => 'ro', isa => 'Int', init_arg => undef);
@@ -128,12 +129,13 @@ sub _decode_N {
 
 sub _encode_ID {
     my ($self, $minp, $maxp, $sink, $value) = @_;
-    my $string;
+    my $string = $value;
 
     if ($self->contract) {
-        $value = ($self->contract->{$value} || die "Value $value not contained in ".join(', ',sort keys %{$self->contract})." for ".$self->name."\n");
+        $string = $self->contract->{$value};
+        defined $string or die "Value $value not contained in ".join(', ',sort keys %{$self->contract})." for ".$self->name."\n";
     }
-    return $self->_encode_AN( $minp, $maxp, $sink, $value );
+    return $self->_encode_AN( $minp, $maxp, $sink, $string );
 }
 
 sub _decode_ID {
@@ -143,7 +145,7 @@ sub _decode_ID {
 
     if ($self->expand) {
         $val = defined($val) ? $self->expand->{$val} : undef;
-        $err ||= 'elem_bad_code' unless $val;
+        $err ||= 'elem_bad_code' unless defined $val;
     }
 
     return ($err, $len, $val);
@@ -156,7 +158,7 @@ sub _encode_AN {
     $string = "".$value;
     $string =~ s/ *$//;
 
-    length($string) or die "Value $value must have at least one non-space for ".$self->name."\n";
+    length($string) or $self->allow_blank or die "Value $value must have at least one non-space for ".$self->name."\n";
     $string =~ /$sink->{non_charset_re}/ and die "Value $value contains a character outside the destination charset for ".$self->name."\n";
     $string =~ /\P{Print}/ and die "Value $value contains a non-printable character for ".$self->name."\n";
 
@@ -171,7 +173,7 @@ sub _decode_AN {
     my $tcopy = $text;
     $tcopy =~ s/ *$//;
 
-    return 'elem_bad_syntax' if $tcopy =~ /\P{Print}/ || $tcopy eq '';
+    return 'elem_bad_syntax' if $tcopy =~ /\P{Print}/ || ($tcopy eq '' && !$self->allow_blank);
     return undef, length($text), $tcopy;
 }
 
