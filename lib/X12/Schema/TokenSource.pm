@@ -13,6 +13,7 @@ has _suffix_re => (is => 'bare', isa =>'RegexpRef', init_arg => undef);
 has [qw(_segment_term _component_sep _repeat_sep _segment_term_suffix _element_sep)] => (is => 'bare', isa => 'Str', init_arg => undef);
 
 has segment_counter => (is => 'rw', isa => 'Int', default => 0);
+has trace => (is => 'rw', isa => 'Int', default => 0);
 
 sub _parse {
     my ($self) = @_;
