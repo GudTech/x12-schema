@@ -3,14 +3,16 @@
 # expected.  You have been warned.
 use inc::Module::Install;
 
-name 'GTCore';
-all_from 'lib/GTCore.pm';
+name 'X12-Schema';
+all_from 'lib/X12/Schema.pm';
 
-requires 'parent';
-requires 'DBR';
-requires 'MIME::Base64' => 3.11;
-requires 'Crypt::OpenSSL::DSA' => 0.01;
-requires 'Moose' => 2.04;
+requires 'Carp';
+requires 'DateTime';
+requires 'File::Slurp';
+requires 'Moose';
+requires 'Moose::Role';
+requires 'namespace::autoclean';
+requires 'Try::Tiny';
 
 #install_script glob('script/*.pl');
 #auto_install;
