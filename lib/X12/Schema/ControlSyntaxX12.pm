@@ -26,7 +26,7 @@ sub _setup {
                 X12::Schema::Element->new( name => 'Receiver', required => 1, type => 'AN 15/15' ),
                 X12::Schema::Element->new( name => 'Date', required => 1, type => 'DT 6/6' ),
                 X12::Schema::Element->new( name => 'Time', required => 1, type => 'TM 4/4' ),
-                X12::Schema::Element->new( name => 'ISA11', required => 1, $vers ge '00402' ? (type => 'B 1/1') : (type => 'ID 1/1', expand => { U => 'US' }) ),
+                X12::Schema::Element->new( name => 'VersionQual', required => 1, $vers ge '00402' ? (type => 'B 1/1') : (type => 'ID 1/1', expand => { U => 'US' }) ),
                 X12::Schema::Element->new( name => 'Version', required => 1, type => 'ID 5/5' ),
                 X12::Schema::Element->new( name => 'InterchangeNo', required => 1, type => 'N 9/9' ),
                 X12::Schema::Element->new( name => 'AckRequested', required => 1, type => 'ID 1/1', expand => { 0 => 0, 1 => 1 } ),
@@ -92,6 +92,10 @@ sub parse_interchange {
     my $isa_time = delete $ISA->{Time};
     $ISA->{Date}->set( map( ($_ => $isa_time->$_) , qw( hour minute second nanosecond ) ) );
 
+    # not actual data
+    delete $ISA->{VersionQual} if $ver ge '00402';
+    delete $ISA->{ComponentSep};
+
     my @groups;
 
     while ($source->peek_code eq 'GS') {
@@ -145,7 +149,38 @@ sub parse_interchange {
 }
 
 sub emit_interchange {
-    my ($self, $sink, $delims, $data) = @_;
+    my ($self, $sink, $data) = @_;
+
+    $self->_setup( $data->{Version} );
+
+    my $ISA = { %$data };
+    delete $ISA->{Groups};
+    $ISA->{Time} = $ISA->{Date};
+
+    $ISA->{ComponentSep} = $sink->component_sep;
+    $ISA->{VersionQual}  = $sink->repeat_sep if $ISA->{Version} ge '00402';
+
+    $self->{_segments}{ISA}->encode( $sink, $ISA );
+
+    for my $gr (@{ $data->{Groups} }) {
+        my $GS = { %$gr };
+        delete $GS->{TransactionSets};
+
+        $GS->{Time} = $GS->{Date};
+
+        $self->{_segments}{GS}->encode( $sink, $GS );
+
+        for my $st (@{ $gr->{TransactionSets} }) {
+            my $ctr = $sink->segment_counter;
+            $self->{_segments}{ST}->encode( $sink, { TxSetNo => $st->{ID}, Type => $st->{Code} } );
+            $self->tx_set_def->encode( $sink, $st->{Data} );
+            $self->{_segments}{SE}->encode( $sink, { TxSetNo => $st->{ID}, SegmentCount => $sink->segment_counter - $ctr + 1 } );
+        }
+
+        $self->{_segments}{GE}->encode( $sink, { SetCount => scalar(@{ $gr->{TransactionSets} }), GroupNo => $gr->{GroupNo} } );
+    }
+
+    $self->{_segments}{IEA}->encode( $sink, { GroupCount => scalar(@{ $data->{Groups} }), InterchangeNo => $data->{InterchangeNo} } );
 }
 
 __PACKAGE__->meta->make_immutable;

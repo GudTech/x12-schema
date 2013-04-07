@@ -36,4 +36,18 @@ sub parse {
     return $interchange;
 }
 
+sub emit {
+    my ($self, $sink_params, $interchange) = @_;
+
+    require X12::Schema::TokenSink;
+    require X12::Schema::ControlSyntaxX12;
+
+    my $sink = X12::Schema::TokenSink->new( %$sink_params );
+    my $ctl = X12::Schema::ControlSyntaxX12->new( tx_set_def => $self->root );
+
+    $ctl->emit_interchange( $sink, $interchange );
+
+    return $sink->output;
+}
+
 __PACKAGE__->meta->make_immutable;
