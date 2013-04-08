@@ -60,12 +60,14 @@ sub decode {
     }
 
     for my $i ( 0 .. $#$kids ) {
+        my $kid = $kids->[$i];
+
+        printf "Looking for %s at %d (%s)\n", join('|', sort keys %{ $kid->_initial_tags }), $src->segment_counter+1, $src->peek_code
+            if $src->trace > 0;
         if ($src->peek_code && !$internal_cont[$i]{$src->peek_code}) {
             $src->get;
             die "Unexpected segment at ".$src->segment_counter."\n";
         }
-
-        my $kid = $kids->[$i];
 
         if (defined($kid->max_use) && $kid->max_use == 1) {
             if ($kid->_initial_tags->{ $src->peek_code }) {

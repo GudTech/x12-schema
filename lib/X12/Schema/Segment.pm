@@ -57,6 +57,8 @@ sub decode {
     die "Malformed segment tag at $i\n" if @{$tokens->[0]} != 1 or @{$tokens->[0][0]} != 1;
     die "Segment with nothing but a terminator at $i\n" if @$tokens == 1;
 
+    return 'UNIMPLEMENTED' if $self->incomplete;
+
     my %data;
 
     my $j = 1;
@@ -76,7 +78,7 @@ sub decode {
         } else {
             my ($err, $parsed) = $el->decode($src, $inp);
 
-            die "Element $name is invalid ($err) at $i\n" if $err;
+            die "Element $name is invalid ($err) ($inp) at $i\n" if $err;
             $data{ $name } = $parsed;
         }
 

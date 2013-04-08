@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 192;
+use Test::More tests => 197;
 use Test::Exception;
 
 BEGIN { use_ok 'X12::Schema::Element'; }
@@ -135,6 +135,11 @@ elem_test('ID 2/3', { A => 'SingleA', AA => 'DoubleA', AAA => 'TripleA' },
     decode => "\n" => 'elem_bad_syntax',
     decode => A => 'elem_too_short',
     decode => ABC => 'elem_bad_code',
+);
+
+elem_test('ID 1/1', { 0 => 0 },
+    encode => 0 => 0,
+    decode => 0 => 0,
 );
 
 elem_test('AN 2/4',

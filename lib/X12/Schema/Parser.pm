@@ -76,7 +76,9 @@ sub _getflags {
 
     my %fpassed;
     for my $fstr (@{ $node->{flags} }) {
-        if ($fpassed{$fstr}++) { _error($node, "Duplicate flag $fstr") }
+        my $val = ($fstr =~ s/\((.*)\)$//) ? $1 : undef;
+        if (exists $fpassed{$fstr}) { _error($node, "Duplicate flag $fstr") }
+        $fpassed{$fstr} = $val;
     }
 
     my @out;
@@ -84,7 +86,21 @@ sub _getflags {
     while (@flags) {
         my $fname = shift @flags;
         push @fok, $fname;
-        push @out, delete($fpassed{$fname}) ? 1 : 0;
+
+        my $ex  = exists $fpassed{$fname};
+        my $val = delete $fpassed{$fname};
+        if (ref $flags[0]) {
+            my $re = shift @flags;
+            if (!$ex) { push @out, undef; next }
+
+            defined($val) or _error($node, "Flag $fname requires argument");
+            $val =~ /$re/ or _error($node, "Flag $fname has invalid syntax");
+            push @out, $val;
+        } else {
+            if (!$ex) { push @out, 0; next }
+            defined($val) and _error($node, "Flag $fname does not use argument");
+            push @out, 1;
+        }
     }
 
     _error($node,"Invalid flag ",((sort keys %fpassed)[0])," for $thing, valid flags are: @fok") if %fpassed;
@@ -95,31 +111,40 @@ sub _getflags {
 sub _interpret_root {
     my ($self, $node) = @_;
 
-    my $schema;
-    my %segments;
+    my %pools = ( 'schema:' => [], 'segment:' => [], 'element:' => [] );
 
     for my $z (@{ $node->{children} }) {
-        if ($z->{command} eq 'schema:') {
-            _error($z, "Duplicate schema definition") if $schema;
-            $schema = $z; # need to defer this until the segments exist
-        }
-        elsif ($z->{command} eq 'segment:') {
-            my $seg = $self->_interpret_segment($z);
-            _error($z,"Duplicate definition of segment ",$seg->tag) if $segments{$seg->tag};
-            $segments{$seg->tag} = $seg;
-        }
-        else {
+        if ($pools{$z->{command}}) {
+            push @{ $pools{$z->{command}} }, $z;
+        } else {
             _error($z, "Root-level element in schema must be segment: or schema:");
         }
     }
 
-    _error($node, "Missing schema: element") unless $schema;
+    my %elements;
 
-    return $self->_interpret_schema(\%segments, $schema);
+    for my $z (@{ $pools{'element:'} }) {
+        my $el = $self->_interpret_element(undef, $z, 1);
+        _error($z,"Duplicate definition of element ",$el->refno) if $elements{$el->refno};
+        $elements{$el->refno} = $el;
+    }
+
+    my %segments;
+
+    for my $z (@{ $pools{'segment:'} }) {
+        my $seg = $self->_interpret_segment(\%elements, $z);
+        _error($z,"Duplicate definition of segment ",$seg->tag) if $segments{$seg->tag};
+        $segments{$seg->tag} = $seg;
+    }
+
+    _error($node, 'Missing schema: element') unless $pools{'schema:'}[0];
+    _error($pools{'schema:'}[1], "Duplicate schema definition") if $pools{'schema:'}[1];
+
+    return $self->_interpret_schema(\%segments, $pools{'schema:'}[0]);
 }
 
 sub _interpret_segment {
-    my ($self, $node) = @_;
+    my ($self, $elems, $node) = @_;
 
     my ($incomplete) = _getflags($node, "segment", "+incomplete");
     _error($node, "Segment syntax is segment: SHRT FriendlyName") unless @{ $node->{toks} } == 2;
@@ -132,7 +157,7 @@ sub _interpret_segment {
 
     for my $z (@{ $node->{children} }) {
         if ($z->{command} eq '') {
-            push @elements, $self->_interpret_element($z);
+            push @elements, $self->_interpret_element($elems, $z, 0);
             $elem_ok{ $elements[-1]->name }++ and _error($z, "Duplicate hash key for segment element: ", $elements[-1]->name);
         }
         elsif ($z->{command} eq 'constraint:') {
@@ -143,7 +168,7 @@ sub _interpret_segment {
         }
     }
 
-    @elements or _error($node, "Non-incomplete segment without defined elements");
+    @elements or $incomplete or _error($node, "Non-incomplete segment without defined elements");
 
     @constraints = map { $self->_interpret_constraint(\%elem_ok, $_) } @constraints;
 
@@ -192,12 +217,25 @@ sub _interpret_constraint {
 }
 
 sub _interpret_element {
-    my ($self, $node) = @_;
+    my ($self, $elems, $node, $free) = @_;
 
-    my ($required, $raw) = _getflags($node, 'element', '+required', '+raw');
+    my ($required, $raw, $refno) = _getflags($node, 'element', '+required', '+raw', '+element' => qr/^\d+$/);
 
-    @{ $node->{toks} } == 3 or _error($node, "Element definition must be of the form FriendlyName TYPE MIN/MAX [+flags]");
+    _error($node, "Reference number required in freestanding element definition") if $free && !$refno;
+
+    if (!$free && $refno && @{ $node->{toks} } == 1) {
+        my $tpl = $elems->{$refno} or _error($node, "Reference number $refno corresponds to no defined element");
+
+        return X12::Schema::Element->new(
+            required => $required, name => $node->{toks}[0], refno => $tpl->refno,
+            type => $tpl->type, $tpl->expand ? (expand => $tpl->expand) : (),
+        );
+    }
+
+    @{ $node->{toks} } == 3 or _error($node, "Element definition must be of the form FriendlyName TYPE MIN/MAX [+flags] or FriendlyName +element(REF)");
     my ($name, $type, $size) = @{ $node->{toks} };
+
+    _error($node, "+required not valid when defining an element type") if $free && $required;
 
     my (%expand, %unexpand);
 
@@ -219,6 +257,7 @@ sub _interpret_element {
         required => $required,
         name => $name,
         type => "$type $size",
+        ($refno  ? (refno => $refno) : ()),
         (%expand ? (expand => \%expand) : ()),
     );
 }
