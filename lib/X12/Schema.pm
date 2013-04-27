@@ -36,6 +36,24 @@ sub parse {
     return $interchange;
 }
 
+sub parse_concatenation {
+    my ($self, $text) = @_;
+
+    require X12::Schema::TokenSource;
+    require X12::Schema::ControlSyntaxX12;
+
+    my $src = X12::Schema::TokenSource->new( buffer => $text );
+    my $ctl = X12::Schema::ControlSyntaxX12->new( tx_set_def => $self->root );
+
+    my @list;
+    while ($src->peek) {
+        push @list, $ctl->parse_interchange( $src );
+    }
+    $src->expect_eof;
+
+    return \@list;
+}
+
 sub emit {
     my ($self, $sink_params, $interchange) = @_;
 
