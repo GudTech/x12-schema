@@ -51,7 +51,7 @@ sub parse_concatenation {
     }
     $src->expect_eof;
 
-    return \@list;
+    return wantarray ? @list : \@list;
 }
 
 sub emit {
