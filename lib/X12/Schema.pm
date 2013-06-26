@@ -22,12 +22,12 @@ sub loadfile {
 }
 
 sub parse {
-    my ($self, $text) = @_;
+    my ($self, $text, %opts) = @_;
 
     require X12::Schema::TokenSource;
     require X12::Schema::ControlSyntaxX12;
 
-    my $src = X12::Schema::TokenSource->new( buffer => $text );
+    my $src = X12::Schema::TokenSource->new( %opts, buffer => $text );
     my $ctl = X12::Schema::ControlSyntaxX12->new( tx_set_def => $self->root );
 
     my $interchange = $ctl->parse_interchange( $src );
@@ -37,12 +37,12 @@ sub parse {
 }
 
 sub parse_concatenation {
-    my ($self, $text) = @_;
+    my ($self, $text, %opts) = @_;
 
     require X12::Schema::TokenSource;
     require X12::Schema::ControlSyntaxX12;
 
-    my $src = X12::Schema::TokenSource->new( buffer => $text );
+    my $src = X12::Schema::TokenSource->new( %opts, buffer => $text );
     my $ctl = X12::Schema::ControlSyntaxX12->new( tx_set_def => $self->root );
 
     my @list;

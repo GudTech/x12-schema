@@ -14,6 +14,7 @@ has [qw(_segment_term _component_sep _repeat_sep _segment_term_suffix _element_s
 
 has segment_counter => (is => 'rw', isa => 'Int', default => 0);
 has trace => (is => 'rw', isa => 'Int', default => 0);
+has ignore_component_sep => (is => 'rw', isa => 'Int', default => 0);
 
 sub _parse {
     my ($self) = @_;
@@ -28,7 +29,7 @@ sub _parse {
         $self->{buffer} =~ s/^(\r?\n?)//;
 
         $self->set_delims(
-            substr($ISA, 104, 1),
+            $self->{ignore_component_sep} ? undef : substr($ISA, 104, 1),
             ($ver ge '00402') ? substr($ISA, 82, 1) : undef,
             substr($ISA, 3, 1),
             substr($ISA, 105, 1),
@@ -55,7 +56,7 @@ sub _parse {
 
     return [
         map [
-            map [ $_ ne '' ? split /\Q$csep/, $_, -1 : $_ ],
+            map [ defined($csep) && $_ ne '' ? split /\Q$csep/, $_, -1 : $_ ],
             ((defined($rsep) && $_ ne '') ? split /\Q$rsep/, $_, -1 : $_)
         ], split /\Q$esep/, $segment, -1
     ];

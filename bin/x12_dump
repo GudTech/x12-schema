@@ -6,12 +6,14 @@ use Data::Dumper;
 
 use Getopt::Std;
 my %opts;
-getopts('s:f:', \%opts);
+getopts('s:f:C', \%opts);
 
 my $specfile = $opts{s} or die "-s *specfile* is required";
 my $x12file  = $opts{f} or die "-f *x12 file* is required";
+my %parsopt;
+$parsopt{ignore_component_sep} = 1 if $opts{C};
 
 my $buffer = read_file( $x12file ) or die "failed to load $x12file";
-my @docs = X12::Schema->loadfile( file => $specfile )->parse_concatenation( $buffer );
+my @docs = X12::Schema->loadfile( file => $specfile )->parse_concatenation( $buffer, %parsopt );
 
 print Dumper(\@docs);
