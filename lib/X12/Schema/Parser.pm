@@ -15,7 +15,7 @@ sub parse {
     my ($self, $filename, $text) = @_;
 
     my $root = $self->_extract_tree($filename, $text);
-    return X12::Schema->new(root => $self->_interpret_root($root));
+    return X12::Schema->new($self->_interpret_root($root));
 }
 
 sub _extract_tree {
@@ -264,8 +264,11 @@ sub _interpret_element {
 
 sub _interpret_schema {
     my ($self, $elems, $node) = @_;
-    _noflags($node,"schema");
-    return $self->_interpret_loop_body('ROOT', 1, 1, $elems, $node);
+    my ($ignore_component_sep) = _getflags($node, 'schema', '+ignore_component_sep');
+    return (
+        root => $self->_interpret_loop_body('ROOT', 1, 1, $elems, $node),
+        ignore_component_sep => $ignore_component_sep,
+    );
 }
 
 sub _interpret_loop_body {

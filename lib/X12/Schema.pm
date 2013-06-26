@@ -5,6 +5,7 @@ use namespace::autoclean;
 use File::Slurp qw( read_file );
 
 has root => (is => 'ro', isa => 'X12::Schema::Sequence', required => 1);
+has ignore_component_sep => (is => 'ro', isa => 'Bool', default => 0);
 
 sub loadstring {
     my ($pkg, %args) = @_;
@@ -21,13 +22,18 @@ sub loadfile {
     return $pkg->loadstring( filename => $args{file}, text => scalar(read_file($args{file})) );
 }
 
-sub parse {
-    my ($self, $text, %opts) = @_;
-
+sub _make_tokensource {
+    my ($self, $text) = @_;
     require X12::Schema::TokenSource;
+    X12::Schema::TokenSource->new( ignore_component_sep => $self->ignore_component_sep, buffer => $text );
+}
+
+sub parse {
+    my ($self, $text) = @_;
+
     require X12::Schema::ControlSyntaxX12;
 
-    my $src = X12::Schema::TokenSource->new( %opts, buffer => $text );
+    my $src = $self->_make_tokensource($text);
     my $ctl = X12::Schema::ControlSyntaxX12->new( tx_set_def => $self->root );
 
     my $interchange = $ctl->parse_interchange( $src );
@@ -39,10 +45,9 @@ sub parse {
 sub parse_concatenation {
     my ($self, $text, %opts) = @_;
 
-    require X12::Schema::TokenSource;
     require X12::Schema::ControlSyntaxX12;
 
-    my $src = X12::Schema::TokenSource->new( %opts, buffer => $text );
+    my $src = $self->_make_tokensource($text);
     my $ctl = X12::Schema::ControlSyntaxX12->new( tx_set_def => $self->root );
 
     my @list;
