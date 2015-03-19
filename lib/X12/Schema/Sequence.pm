@@ -7,6 +7,8 @@ use Carp 'croak';
 with 'X12::Schema::Sequencable';
 
 has children => (isa => 'ArrayRef[X12::Schema::Sequencable]', is => 'ro', required => 1);
+has hier_loop => (isa => 'Bool', is => 'ro');
+has hier_unordered => (isa => 'Bool', is => 'ro');
 
 has _cooked_begin    => (isa => 'ArrayRef[HashRef]', is => 'bare');
 has _cooked_nofollow => (isa => 'ArrayRef[HashRef]', is => 'bare');
@@ -27,6 +29,10 @@ sub encode {
         my $passed = delete $tmp{ $elem->name };
 
         if (!defined($elem->max_use) || $elem->max_use > 1) {
+            if ($elem->can('hier_loop') && $elem->hier_loop) {
+                $passed = $elem->_unhier($passed);
+            }
+
             $passed ||= [];
             die "Replicated segment or loop ".$elem->name." must encode an ARRAY" unless ref($passed) eq 'ARRAY' && !blessed($passed);
 
@@ -90,11 +96,88 @@ sub decode {
                 die $kid->name." is required at ".($src->segment_counter+1)."\n";
             }
 
-            $data{$kid->name} = \@accum;
+            if ($kid->can('hier_loop') && $kid->hier_loop) {
+                $data{$kid->name} = $kid->_rehier(@accum);
+            }
+            else {
+                $data{$kid->name} = \@accum;
+            }
         }
     }
 
     return \%data;
+}
+
+sub _unhier {
+    my ($self, $tree, $accum, $parentid) = @_;
+
+    return [] unless defined($tree);
+
+    if (ref($tree) ne 'HASH' || blessed($tree)) {
+        die "Hierarchal loop ".$self->name." can only encode a HASH";
+    }
+
+    $accum ||= [];
+
+    # ID ParentID LevelType HasChildren
+    my %tmp = %$tree;
+    my $id = delete($tmp{ID}) || (@$accum ? $accum->[-1]{HierLevel}{ID} + 1 : 1);
+    my $leveltype = delete($tmp{LevelType}) || die "Hierarchal loop ".$self->name." requires LevelType";
+    delete $tmp{ParentID}; delete $tmp{HasChildren};
+    my $children = delete($tmp{Children}) || [];
+
+    ref($children) eq 'ARRAY' && !blessed($children) or die "Hierarchal loop ".$self->name." requires ARRAY for children";
+    $children = [grep { defined } @$children];
+
+    $tmp{HierLevel} = { ID => $id, ParentID => $parentid, HasChildren => @$children ? 'Yes' : 'No', LevelType => $leveltype };
+    push @$accum, \%tmp;
+    $self->_unhier($_, $accum, $id) for @$children;
+    return $accum;
+}
+
+sub _rehier {
+    my ($self, @rows) = @_;
+
+    my %nodes;
+    my $root;
+    my @stack;
+
+    for my $n (@rows) {
+        ref($n) eq 'HASH' && ref($n->{HierLevel}) eq 'HASH' && defined($n->{HierLevel}{ID}) && $n->{HierLevel}{LevelType} or die "Hierarchal loop ".$self->name.": data malformed, must have a single required HL segment";
+
+        $n->{$_} = $n->{HierLevel}{$_} for qw( ID ParentID LevelType HasChildren );
+        delete $n->{HierLevel};
+
+        $nodes{$n->{ID}} and die "Hierarchal loop ".$self->name.": ID $n->{ID} repeated";
+        $nodes{$n->{ID}} = $n;
+
+        if (!defined($n->{ParentID})) {
+            $root and die "Hierarchal loop ".$self->name.": two roots";
+            $root = $n;
+        }
+
+        unless ($self->hier_unordered) {
+            if (defined $n->{ParentID}) {
+                while (@stack && $stack[-1]{ID} ne $n->{ParentID}) { pop @stack }
+                @stack or die "Hierarchal loop ".$self->name.": node $n->{ID} is not properly in tree order";
+            }
+            push @stack, $n;
+        }
+    }
+
+    for my $n (@rows) {
+        if (defined $n->{ParentID}) {
+            my $par = $nodes{$n->{ParentID}} or die "Hierarchal loop ".$self->name.": node $n->{ID} lacks parent";
+            my $ptr = $par;
+            while ($ptr) {
+                $ptr == $n and die "Hierarchal loop ".$self->name.": node $n->{ID} participates in ancestry cycle";
+                $ptr = defined($ptr->{ParentID}) ? $nodes{$ptr->{ParentID}} : undef;
+            }
+            push @{$par->{Children}}, $n;
+        }
+    }
+
+    return $root; # may be undef
 }
 
 sub BUILD {

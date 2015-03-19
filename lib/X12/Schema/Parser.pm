@@ -275,24 +275,34 @@ sub _interpret_element {
 }
 
 sub _interpret_schema {
-    my ($self, $elems, $node) = @_;
+    my ($self, $elems, $node, $multi) = @_;
     my ($ignore_component_sep) = _getflags($node, 'schema', '+ignore_component_sep');
-    return (
-        root => $self->_interpret_loop_body('ROOT', 1, 1, $elems, $node),
+
+    my $type = undef;
+    my $name = undef;
+    if ($multi) {
+        (@{ $node->{toks} } == 2 && $node->{toks}[0] =~ /\A[0-9]{3}$/) or _error($node, "Schema header must be of the form schema: NNN MnemonicCode");
+        $type = $node->{toks}[0];
+        $name = $node->{toks}[1];
+    }
+
+    return X12::Schema->new(
+        root => $self->_interpret_loop_body($name, 1, 1, $elems, $node),
+        defined($type) ? (type => $type, name => $name) : (),
         ignore_component_sep => $ignore_component_sep,
     );
 }
 
 sub _interpret_loop_body {
-    my ($self, $name, $min, $max, $elems, $node) = @_;
+    my ($self, $name, $min, $max, $elems, $node, $hier) = @_;
 
     my @children;
 
     for my $z (@{ $node->{children} }) {
         if ($z->{command} eq 'loop:') {
-            _noflags($z,"loop");
+            my ($hier) = _getflags($z, 'loop', '+hier');
             (@{ $z->{toks} } == 2 && $z->{toks}[1] =~ /^(0|1)\/(N|\d+)$/) or _error($z, "Loop header must be of the form loop: HashKey [01]/ddd or HashKey [01]/N");
-            push @children, $self->_interpret_loop_body($z->{toks}[0], $1, $2, $elems, $z);
+            push @children, $self->_interpret_loop_body($z->{toks}[0], $1, $2, $elems, $z, $hier);
         }
         elsif ($z->{command} eq '') {
             _noflags($z,"segment ref");
@@ -311,7 +321,7 @@ sub _interpret_loop_body {
 
     return X12::Schema::Sequence->new(
         children => \@children, required => $min eq '1', max_use => ($max eq 'N' ? undef : 0 + $max),
-        name => $name,
+        name => $name, hier_loop => $hier
     );
 }
 
