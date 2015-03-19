@@ -15,7 +15,7 @@ sub parse {
     my ($self, $filename, $text) = @_;
 
     my $root = $self->_extract_tree($filename, $text);
-    return X12::Schema->new($self->_interpret_root($root));
+    return $self->_interpret_root($root);
 }
 
 sub _extract_tree {
@@ -138,9 +138,21 @@ sub _interpret_root {
     }
 
     _error($node, 'Missing schema: element') unless $pools{'schema:'}[0];
-    _error($pools{'schema:'}[1], "Duplicate schema definition") if $pools{'schema:'}[1];
 
-    return $self->_interpret_schema(\%segments, $pools{'schema:'}[0]);
+    if ($pools{'schema:'}[1]) {
+        my %schemas;
+
+        for my $z (@{ $pools{'schema:'} }) {
+            my $sch = $self->_interpret_schema(\%segments, $z, 1);
+            _error($z,"Duplicate definition of schema for ",$sch->type) if $schemas{$sch->type};
+            $schemas{$sch->type} = $sch;
+        }
+
+        return X12::Schema->new( alternates => \%schemas );
+    }
+    else {
+        return $self->_interpret_schema(\%segments, $pools{'schema:'}[0]);
+    }
 }
 
 sub _interpret_segment {

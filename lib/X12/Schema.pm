@@ -4,7 +4,10 @@ use Moose;
 use namespace::autoclean;
 use File::Slurp qw( read_file );
 
-has root => (is => 'ro', isa => 'X12::Schema::Sequence', required => 1);
+has root => (is => 'ro', isa => 'X12::Schema::Sequence');
+has type => (is => 'ro', isa => 'Str');
+has name => (is => 'ro', isa => 'Str');
+has alternates => (is => 'ro', isa => 'HashRef[X12::Schema]');
 has ignore_component_sep => (is => 'ro', isa => 'Bool', default => 0);
 
 sub loadstring {
@@ -34,7 +37,7 @@ sub parse {
     require X12::Schema::ControlSyntaxX12;
 
     my $src = $self->_make_tokensource($text);
-    my $ctl = X12::Schema::ControlSyntaxX12->new( tx_set_def => $self->root );
+    my $ctl = X12::Schema::ControlSyntaxX12->new( schema => $self );
 
     my $interchange = $ctl->parse_interchange( $src );
     $src->expect_eof;
@@ -48,7 +51,7 @@ sub parse_concatenation {
     require X12::Schema::ControlSyntaxX12;
 
     my $src = $self->_make_tokensource($text);
-    my $ctl = X12::Schema::ControlSyntaxX12->new( tx_set_def => $self->root );
+    my $ctl = X12::Schema::ControlSyntaxX12->new( schema => $self );
 
     my @list;
     while ($src->peek) {
@@ -66,7 +69,7 @@ sub emit {
     require X12::Schema::ControlSyntaxX12;
 
     my $sink = X12::Schema::TokenSink->new( %$sink_params );
-    my $ctl = X12::Schema::ControlSyntaxX12->new( tx_set_def => $self->root );
+    my $ctl = X12::Schema::ControlSyntaxX12->new( schema => $self );
 
     $ctl->emit_interchange( $sink, $interchange );
 

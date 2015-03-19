@@ -7,7 +7,7 @@ use X12::Schema::Segment;
 use X12::Schema::Element;
 
 has '_segments' => (is => 'bare');
-has 'tx_set_def' => (is => 'ro', isa => 'X12::Schema::Sequence', required => 1);
+has 'schema' => (is => 'ro', isa => 'X12::Schema', required => 1);
 
 sub _setup {
     my ($self, $vers) = @_;
@@ -112,10 +112,18 @@ sub parse_interchange {
             my $ST = $self->{_segments}{ST}->decode( $source );
 
             # DIVERSITY: will need to select this on the basis of $ST->{Type}
-            my $defn = $self->tx_set_def;
+            my $defn;
 
-            #my $defn = $self->types->{ "$GS->{VersionQual} $GS->{Version} $ST->{Type}" }
-            #    or die "No schema available for standard=$GS->{VersionQual} $GS->{Version} transaction set type=$ST->{Type}\n";
+            if ($self->schema->root) {
+                $defn = $self->schema->root;
+            }
+            elsif ($self->schema->alternates->{$ST->{Type}}) {
+                $defn = $self->schema->alternates->{$ST->{Type}}->root;
+                $ST->{Type} = $self->schema->alternates->{$ST->{Type}}->name;
+            }
+            else {
+                die "No schema available for transaction set type=$ST->{Type}\n";
+            }
 
             my $body = $defn->decode( $source, { SE => 1 } );
 
@@ -172,8 +180,17 @@ sub emit_interchange {
 
         for my $st (@{ $gr->{TransactionSets} }) {
             my $ctr = $sink->segment_counter;
-            $self->{_segments}{ST}->encode( $sink, { TxSetNo => $st->{ID}, Type => $st->{Code} } );
-            $self->tx_set_def->encode( $sink, $st->{Data} );
+            my $rschema;
+            if ($self->schema->root) {
+                $rschema = $self->schema;
+            }
+            else {
+                ($rschema) = grep { $_->type eq $st->{Code} } values %{ $self->schema->alternates }
+                    or die "No schema found for encoding transaction set type $st->{Code}";
+            }
+
+            $self->{_segments}{ST}->encode( $sink, { TxSetNo => $st->{ID}, Type => $rschema->type || $st->{Code} } );
+            $rschema->root->encode( $sink, $st->{Data} );
             $self->{_segments}{SE}->encode( $sink, { TxSetNo => $st->{ID}, SegmentCount => $sink->segment_counter - $ctr + 1 } );
         }
 
