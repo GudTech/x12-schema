@@ -71,8 +71,8 @@ sub decode {
         printf "Looking for %s at %d (%s)\n", join('|', sort keys %{ $kid->_initial_tags }), $src->segment_counter+1, $src->peek_code
             if $src->trace > 0;
         if ($src->peek_code && !$internal_cont[$i]{$src->peek_code}) {
-            $src->get;
-            die "Unexpected segment at ".$src->segment_counter."\n";
+            my $p = $src->peek_code;
+            die "Unexpected segment $p at ".$src->segment_counter."\n";
         }
 
         if (defined($kid->max_use) && $kid->max_use == 1) {
@@ -89,7 +89,7 @@ sub decode {
                     die $kid->name." exceeds ".$kid->max_use." occurrences at ".($src->segment_counter+1)."\n";
                 }
 
-                push @accum, $kid->decode( $src, $internal_cont[$i] ); # deliberately $i - we'll loop back
+                push @accum, $kid->decode( $src, { %{ $internal_cont[$i+1] }, %{ $self->{_cooked_begin}[$i] } } ); # may or may not loop back
             }
 
             if ($kid->required && !@accum) {
