@@ -52,11 +52,11 @@ _F:2:Illegal hard tab
 
 #### Root level
 
---- Duplicate schema
+--- Duplicate schema (without multischema header)
 schema:
 schema:
 ==>
-_F:2:Duplicate schema definition
+_F:1:Schema header must be of the form schema: NNN MnemonicCode
 
 --- Invalid root-level element
 foo: bar
@@ -321,7 +321,7 @@ _F:5:Duplicate long value One
 --- schema: flags
 schema: +bob
 ==>
-_F:1:Schema does not accept flags
+_F:1:Invalid flag +bob for schema, valid flags are: +ignore_component_sep
 
 --- schema: odd element
 schema: foo

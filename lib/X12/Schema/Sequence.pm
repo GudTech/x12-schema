@@ -72,6 +72,7 @@ sub decode {
             if $src->trace > 0;
         if ($src->peek_code && !$internal_cont[$i]{$src->peek_code}) {
             my $p = $src->peek_code;
+            $src->get;
             die "Unexpected segment $p at ".$src->segment_counter."\n";
         }
 

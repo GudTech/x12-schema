@@ -153,6 +153,8 @@ sub _decode_ID {
     return ($err, $len, $val);
 }
 
+my $nonprint_re = ("\n" =~ /\p{Print}/) ? qr/[^\p{Graph}\p{Zs}]/ : qr/\P{Print}/; # 5.12.0 change
+
 sub _encode_AN {
     my ($self, $minp, $maxp, $sink, $value) = @_;
     my $string;
@@ -162,7 +164,7 @@ sub _encode_AN {
 
     length($string) or $self->allow_blank or die "Value $value must have at least one non-space for ".$self->name."\n";
     $string =~ /$sink->{non_charset_re}/ and die "Value $value contains a character outside the destination charset for ".$self->name."\n";
-    $string =~ /\P{Print}/ and die "Value $value contains a non-printable character for ".$self->name."\n";
+    $string =~ /$nonprint_re/ and die "Value $value contains a non-printable character for ".$self->name."\n";
 
     length($string) > $maxp and die "Value $value does not fit in $maxp characters for ".$self->name."\n";
     length($string) < $minp and $string .= (" " x ($minp - length($string)));
@@ -175,7 +177,7 @@ sub _decode_AN {
     my $tcopy = $text;
     $tcopy =~ s/ *$//;
 
-    return 'elem_bad_syntax' if $tcopy =~ /\P{Print}/ || ($tcopy eq '' && !$self->allow_blank);
+    return 'elem_bad_syntax' if $tcopy =~ /$nonprint_re/ || ($tcopy eq '' && !$self->allow_blank);
     return undef, length($text), $tcopy;
 }
 

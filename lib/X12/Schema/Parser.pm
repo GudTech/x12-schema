@@ -279,7 +279,7 @@ sub _interpret_schema {
     my ($ignore_component_sep) = _getflags($node, 'schema', '+ignore_component_sep');
 
     my $type = undef;
-    my $name = undef;
+    my $name = 'ROOT';
     if ($multi) {
         (@{ $node->{toks} } == 2 && $node->{toks}[0] =~ /\A[0-9]{3}$/) or _error($node, "Schema header must be of the form schema: NNN MnemonicCode");
         $type = $node->{toks}[0];
@@ -321,7 +321,7 @@ sub _interpret_loop_body {
 
     return X12::Schema::Sequence->new(
         children => \@children, required => $min eq '1', max_use => ($max eq 'N' ? undef : 0 + $max),
-        name => $name, hier_loop => $hier
+        name => $name, $hier ? (hier_loop => $hier) : (),
     );
 }
 
