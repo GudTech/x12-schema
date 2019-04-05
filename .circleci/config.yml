@@ -1,0 +1,23 @@
+version: 2
+
+jobs:
+  build:
+    docker:
+      - image: perl:5.28.1
+    steps:
+      - checkout
+      - run:
+          name: "Install CPAN dependencies"
+          command: |
+            export PERL_MM_USE_DEFAULT=1
+            cpan DateTime
+            cpan File::Slurp
+            cpan Moose
+            cpan Moose::Role
+            cpan namespace::autoclean
+            cpan Try::Tiny
+            cpan Test::Exception
+      - run:
+          name: "Run Test Suite"
+          command: |
+            prove -lr t
